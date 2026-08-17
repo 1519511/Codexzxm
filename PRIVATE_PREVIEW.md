@@ -16,7 +16,7 @@ OpenAI 当前将完整 MCP 写入/修改能力提供给 Business、Enterprise �
 
 因此，安装成功并不等于所有账号都能在 ChatGPT 中看到或调用全部 Stable 写入工具。Codexzxm Stable 本身默认注册 121 个 MCP 工具；最终可见和可调用的工具仍受 ChatGPT 产品权限、工作区策略和本机 Codex 权限共同约束。
 
-## 2. 获取私有仓库并检查前置环境
+## 2. 获取公开仓库并检查前置环境
 
 仓库：
 
@@ -24,7 +24,7 @@ OpenAI 当前将完整 MCP 写入/修改能力提供给 Business、Enterprise �
 https://github.com/1519511/Codexzxm
 ```
 
-需要仓库所有者先把你的 GitHub 账号加入 collaborator。
+仓库已经公开，不需要 collaborator 邀请，可以直接 clone。
 
 Windows：
 

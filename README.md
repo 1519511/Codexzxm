@@ -7,6 +7,15 @@ Default private surface: `codexzxm-stable-v1`
 Stable tool contract: **121 registered MCP tools** = 21 compatibility tools + 100 private Workbench tools = 118 model-visible tools + 3 app-only task-card tools.
 Experimental Pro Bridge can be explicitly enabled with `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1`, restoring the 3 bridge tools for **124 registered tools** under the experimental surface.
 
+## Give this repository to Codex
+
+For a new machine, give Codex this repository URL:
+
+```text
+https://github.com/1519511/Codexzxm
+```
+and ask it to **read and follow [CODEX_INSTALL.md](CODEX_INSTALL.md)**. The repository is public, so no GitHub collaborator invitation is required. Local installation and Doctor can be automated; tunnel credentials and machine authority must belong to the user installing it.
+
 Private preview testers installing Codexzxm on another machine should read [`PRIVATE_PREVIEW.md`](PRIVATE_PREVIEW.md) before configuring a tunnel or granting filesystem authority. Machine credentials, tunnel profiles, root registries, browser sessions, and `.workbench` state must never be copied between users or hosts. Maintainer-side release checks are recorded in [`docs/PRIVATE_PREVIEW_RELEASE_AUDIT.md`](docs/PRIVATE_PREVIEW_RELEASE_AUDIT.md).
 
 ## Stable design
@@ -39,7 +48,6 @@ After installation, register roots that are already explicitly authorized by loc
 workbench.root_register(alias="windows-system", cwd="C:\\")
 workbench.root_register(alias="windows-data", cwd="D:\\")
 ```
-
 On macOS, analogous aliases can point to explicitly trusted roots such as `$HOME` or `/Volumes/Data`.
 
 `root_status` revalidates current authority. If Codex trust/profile changes, Codexzxm reports drift and refuses to treat the stored alias as full authority. There is no expiry timer and no automatic self-renewal because there is no lease model.
@@ -56,13 +64,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -Alias github-main `
   -Description "GitHub credential"
 ```
-
 macOS:
 
 ```sh
 "$HOME/Library/Application Support/Codexzxm/app/scripts/codexzxm-secret-set.sh" github-main "GitHub credential"
 ```
-
 MCP can list only metadata such as `secretRef=github-main`. For execution, pass a mapping such as:
 
 ```json
@@ -72,7 +78,6 @@ MCP can list only metadata such as `secretRef=github-main`. For execution, pass 
   }
 }
 ```
-
 The persisted process/PTY state stores the reference name, not the plaintext secret.
 
 ## Experimental ChatGPT Pro Web Bridge
@@ -84,7 +89,6 @@ Enable it only when deliberately testing the experimental lane:
 ```text
 CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1
 ```
-
 When enabled, the three `workbench.pro_bridge_*` tools are added back and the registered surface rises from 121 to 124 tools. The bridge must fail visibly on unsupported UI/auth states and must never automatically replay an uncertain send.
 
 ## Workflow and execution manifests
@@ -96,7 +100,6 @@ Step results can be referenced by later steps:
 ```text
 ${steps.step_id.field.path}
 ```
-
 When `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` is explicitly enabled, `pro_reason` is added to the workflow step types and may wait/poll the original Pro Bridge task. Stable workflows never depend on it.
 
 The execution manifest protocol records assumptions, verification goals, rollback metadata, root alias and workflow steps. It explicitly reports:
@@ -105,25 +108,21 @@ The execution manifest protocol records assumptions, verification goals, rollbac
 temporaryPermissionLease = false
 apiRouteUsed = false
 ```
-
 ## Windows install
 
 ```powershell
 .\bin\codexzxm-install.cmd
 ```
-
 Default install root:
 
 ```text
 %LOCALAPPDATA%\Codexzxm
 ```
-
 Run doctor:
 
 ```powershell
 & "$env:LOCALAPPDATA\Codexzxm\bin\codexzxm-doctor.cmd" --cwd "D:\your-project"
 ```
-
 Tunnel/autostart configuration lives outside the install tree under `%USERPROFILE%\.config\codexzxm`. The ordinary runtime API key used by Secure MCP Tunnel is stored with Windows DPAPI. Staged upgrades therefore do not delete the runtime credential.
 
 On Windows, the Startup launcher resolves the supervisor through `%LOCALAPPDATA%` instead of embedding a user-profile path, so non-ASCII account names remain valid. The long-running supervisor writes a heartbeat to `%USERPROFILE%\.config\codexzxm\supervisor\heartbeat.json` and continuously restores the managed runtime when the MCP child or tunnel process exits after a network/proxy interruption. Autostart setup fails visibly if it cannot verify a live supervisor heartbeat.
@@ -133,19 +132,16 @@ On Windows, the Startup launcher resolves the supervisor through `%LOCALAPPDATA%
 ```sh
 sh ./bin/codexzxm-install.sh
 ```
-
 Default install root:
 
 ```text
 ~/Library/Application Support/Codexzxm/app
 ```
-
 Run doctor:
 
 ```sh
 "$HOME/Library/Application Support/Codexzxm/app/bin/codexzxm-doctor.sh" --cwd "$HOME/your-project"
 ```
-
 Use a separate Mac Secure MCP Tunnel, macOS Keychain for runtime/secret credentials, and the included LaunchAgent supervisor. See [`platform/macos/README.md`](platform/macos/README.md) and [`MAC_CODEX_BOOTSTRAP.md`](MAC_CODEX_BOOTSTRAP.md).
 
 ## Windows + Mac together
@@ -156,7 +152,6 @@ Use distinct execution hosts and tunnel aliases:
 Codexzxm Windows -> Windows filesystem/apps -> tunnel A
 Codexzxm Mac     -> macOS filesystem/apps   -> tunnel B
 ```
-
 Permanent root aliases make higher-level workflows portable while each host continues to enforce its own local Codex authority.
 
 ## Development
@@ -165,7 +160,6 @@ Permanent root aliases make higher-level workflows portable while each host cont
 npm ci
 npm test
 ```
-
 The exact surface contract is pinned in `src/surface-contracts.mjs`.
 
 ## Upstream and license
