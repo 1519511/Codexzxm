@@ -10,3 +10,16 @@ npm-debug.log*
 *.log
 .DS_Store
 Thumbs.db
+
+# Local credentials and machine-specific security material
+.npmrc
+*.dpapi
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.token
+secrets/
+tunnel-windows.json
+tunnel-macos.json

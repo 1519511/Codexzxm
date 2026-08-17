@@ -2,10 +2,12 @@
 
 Codexzxm is a private local execution plane that lets ChatGPT use authority-bounded tools on the user's own Windows or Apple Silicon macOS machine through MCP. It is derived from the Apache-2.0 licensed Codexless project. Local model-free execution, ChatGPT Web subscription reasoning, and optional Codex Agent escalation are separate lanes.
 
-Current package: `0.8.0-preview.0`
+Current package: `0.8.1-preview.0`
 Default private surface: `codexzxm-stable-v1`
 Stable tool contract: **121 registered MCP tools** = 21 compatibility tools + 100 private Workbench tools = 118 model-visible tools + 3 app-only task-card tools.
 Experimental Pro Bridge can be explicitly enabled with `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1`, restoring the 3 bridge tools for **124 registered tools** under the experimental surface.
+
+Private preview testers installing Codexzxm on another machine should read [`PRIVATE_PREVIEW.md`](PRIVATE_PREVIEW.md) before configuring a tunnel or granting filesystem authority. Machine credentials, tunnel profiles, root registries, browser sessions, and `.workbench` state must never be copied between users or hosts. Maintainer-side release checks are recorded in [`docs/PRIVATE_PREVIEW_RELEASE_AUDIT.md`](docs/PRIVATE_PREVIEW_RELEASE_AUDIT.md).
 
 ## Stable design
 

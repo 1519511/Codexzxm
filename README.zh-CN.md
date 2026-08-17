@@ -2,10 +2,12 @@
 
 Codexzxm 是一个私有本地执行控制面，让 ChatGPT 通过 MCP 使用你自己 Windows 或 Apple Silicon Mac 上、受 Codex 本地权限约束的工具。项目基于 Apache-2.0 的 Codexless 演化而来。本地 model-free 执行、ChatGPT Web 订阅推理、以及可选的 Codex Agent 调用是三条独立通道。
 
-当前版本：`0.8.0-preview.0`
+当前版本：`0.8.1-preview.0`
 默认私有 Surface：`codexzxm-stable-v1`
 Stable 工具合同：**121 个已注册 MCP 工具** = 21 个兼容工具 + 100 个私有 Workbench 工具 = 118 个模型可见工具 + 3 个仅供 App 任务卡使用的工具。
 只有显式设置 `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` 时，才会恢复 3 个 Pro Bridge 工具，实验 Surface 共 **124 个已注册工具**。
+
+受邀测试者如果要在另一台电脑上安装，请先阅读 [`PRIVATE_PREVIEW.md`](PRIVATE_PREVIEW.md)。不要跨用户或跨机器复制 Tunnel 凭据、DPAPI/Keychain、Root Registry、浏览器登录态或 `.workbench` 运行状态；源码可以共享，机器身份、权限和凭据必须逐机建立。维护者侧的发布检查记录见 [`docs/PRIVATE_PREVIEW_RELEASE_AUDIT.md`](docs/PRIVATE_PREVIEW_RELEASE_AUDIT.md)。
 
 ## Stable 核心设计
 
