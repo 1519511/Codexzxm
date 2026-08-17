@@ -1,6 +1,6 @@
 {
   "name": "codexzxm",
-  "version": "0.7.3-preview.0",
+  "version": "0.7.4-preview.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "Codexzxm: a permanent-authority local execution plane for ChatGPT on Windows and Apple Silicon macOS with 124 MCP tools, PTY, browser file transfer, Pro Web Bridge, workflows, secrets, and persistent workspaces.",

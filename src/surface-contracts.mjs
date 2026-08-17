@@ -1,4 +1,4 @@
-export const PUBLIC_SERVER_VERSION = "0.7.3-preview.0";
+export const PUBLIC_SERVER_VERSION = "0.7.4-preview.0";
 export const PUBLIC_SURFACE_VERSION = "codexzxm-compat-v1";
 
 export const PUBLIC_TOOL_NAMES = Object.freeze([
