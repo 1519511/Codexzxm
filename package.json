@@ -1,6 +1,6 @@
 {
   "name": "codexzxm",
-  "version": "0.8.1-preview.0",
+  "version": "0.8.2-preview.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "Codexzxm Stable: a permanent-authority local execution plane for ChatGPT on Windows and Apple Silicon macOS with 121 default MCP tools, durable PTY/processes, workflows, secrets, Browser/Computer Use as optional UI, and experimental Pro Web Bridge disabled by default.",
@@ -20,7 +20,7 @@
     "test:workbench:workspace": "node test/workbench-workspace-unit.mjs",
     "test:workbench:computer": "node test/workbench-computer-contract.mjs",
     "test:workbench": "node test/workbench-contract.mjs",
-    "test": "node test/public-contract.mjs && node test/codex-version-policy-unit.mjs && node test/workbench-surface-unit.mjs && node test/workbench-unit.mjs && node test/workbench-v61-unit.mjs && node test/public-context-recovery-unit.mjs && node test/browser-session-reuse-unit.mjs && node test/workbench-image-handoff-unit.mjs && node test/workbench-git-hardening-unit.mjs && node test/workbench-process-durable-unit.mjs && node test/workbench-workspace-unit.mjs && node test/workbench-computer-contract.mjs && node test/workbench-contract.mjs",
+    "test": "node test/public-contract.mjs && node test/codex-version-policy-unit.mjs && node test/workbench-surface-unit.mjs && node test/workbench-unit.mjs && node test/workbench-v61-unit.mjs && node test/windows-autostart-selfheal-unit.mjs && node test/public-context-recovery-unit.mjs && node test/browser-session-reuse-unit.mjs && node test/workbench-image-handoff-unit.mjs && node test/workbench-git-hardening-unit.mjs && node test/workbench-process-durable-unit.mjs && node test/workbench-workspace-unit.mjs && node test/workbench-computer-contract.mjs && node test/workbench-contract.mjs",
     "start:compat:stdio": "node scripts/launch.mjs stdio",
     "start:compat:http": "node scripts/launch.mjs http",
     "test:version-policy": "node test/codex-version-policy-unit.mjs",

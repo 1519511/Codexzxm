@@ -2,7 +2,7 @@
 
 Codexzxm is a private local execution plane that lets ChatGPT use authority-bounded tools on the user's own Windows or Apple Silicon macOS machine through MCP. It is derived from the Apache-2.0 licensed Codexless project. Local model-free execution, ChatGPT Web subscription reasoning, and optional Codex Agent escalation are separate lanes.
 
-Current package: `0.8.1-preview.0`
+Current package: `0.8.2-preview.0`
 Default private surface: `codexzxm-stable-v1`
 Stable tool contract: **121 registered MCP tools** = 21 compatibility tools + 100 private Workbench tools = 118 model-visible tools + 3 app-only task-card tools.
 Experimental Pro Bridge can be explicitly enabled with `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1`, restoring the 3 bridge tools for **124 registered tools** under the experimental surface.
@@ -125,6 +125,8 @@ Run doctor:
 ```
 
 Tunnel/autostart configuration lives outside the install tree under `%USERPROFILE%\.config\codexzxm`. The ordinary runtime API key used by Secure MCP Tunnel is stored with Windows DPAPI. Staged upgrades therefore do not delete the runtime credential.
+
+On Windows, the Startup launcher resolves the supervisor through `%LOCALAPPDATA%` instead of embedding a user-profile path, so non-ASCII account names remain valid. The long-running supervisor writes a heartbeat to `%USERPROFILE%\.config\codexzxm\supervisor\heartbeat.json` and continuously restores the managed runtime when the MCP child or tunnel process exits after a network/proxy interruption. Autostart setup fails visibly if it cannot verify a live supervisor heartbeat.
 
 ## Apple Silicon macOS install
 

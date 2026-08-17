@@ -13,6 +13,7 @@ $SecretFile = Join-Path $StateRoot 'secrets\control-plane.dpapi'
 $LegacySecretFile = Join-Path $env:LOCALAPPDATA 'Codexzxm\secrets\control-plane.dpapi'
 $SupervisorStateDir = Join-Path $StateRoot 'supervisor'
 $LogFile = Join-Path $SupervisorStateDir 'tunnel-supervisor.log'
+$HeartbeatFile = Join-Path $SupervisorStateDir 'heartbeat.json'
 $MutexName = 'Local\CodexzxmTunnelSupervisor'
 
 New-Item -ItemType Directory -Force $SupervisorStateDir | Out-Null
@@ -24,6 +25,24 @@ function Write-SupervisorLog([string]$Message) {
       if ($info -and $info.Length -gt 1048576) { Move-Item $LogFile ($LogFile + '.1') -Force -ErrorAction SilentlyContinue }
     }
     Add-Content -Path $LogFile -Value ((Get-Date).ToString('s') + ' ' + $Message) -Encoding UTF8
+  } catch {}
+}
+
+function Write-SupervisorHeartbeat($Config, $RuntimeStatus) {
+  try {
+    $payload = [ordered]@{
+      version = 1
+      pid = $PID
+      alias = [string]$Config.alias
+      updatedAt = (Get-Date).ToString('o')
+      runtimeRunning = [bool]$RuntimeStatus.Running
+      runtimeReady = [bool]$RuntimeStatus.Ready
+      healthUrl = [string]$RuntimeStatus.HealthUrl
+    }
+    $tmp = $HeartbeatFile + '.tmp'
+    $json = $payload | ConvertTo-Json -Depth 4
+    [System.IO.File]::WriteAllText($tmp, $json + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $tmp -Destination $HeartbeatFile -Force
   } catch {}
 }
 
@@ -134,19 +153,19 @@ function Ensure-Runtime([string]$Exe, $Config) {
     try { $null = & $Exe runtimes stop $Config.alias --json 2>$null; Write-SupervisorLog 'forced stale runtime stop requested'; Start-Sleep -Seconds 1 } catch { Write-SupervisorLog ('forced runtime stop error: ' + $_.Exception.Message) }
     $status = Get-RuntimeStatus $Config
   }
-  if (-not $ForceReconnect -and $status.running -and $status.ready) { return [PSCustomObject]@{Changed=$false;Running=$true;Ready=$true} }
-  if (-not (Wait-ForProxy $Config.proxy)) { Write-SupervisorLog ('proxy unavailable: ' + $Config.proxy); return [PSCustomObject]@{Changed=$false;Running=$false;Ready=$false} }
+  if (-not $ForceReconnect -and $status.running -and $status.ready) { return [PSCustomObject]@{Changed=$false;Running=$true;Ready=$true;HealthUrl=[string]$status.healthUrl} }
+  if (-not (Wait-ForProxy $Config.proxy)) { Write-SupervisorLog ('proxy unavailable: ' + $Config.proxy); return [PSCustomObject]@{Changed=$false;Running=$false;Ready=$false;HealthUrl=[string]$status.healthUrl} }
   Apply-RuntimeEnvironment $Config
   try {
     $null = & $Exe runtimes connect --alias $Config.alias --tunnel-id $Config.tunnelId --runtime-api-key 'env:OPENAI_API_KEY' --profile $Config.profileName --profile-dir $Config.profileDir --mcp-command $Config.mcpCommand --json 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-SupervisorLog "runtimes connect failed with exit code $LASTEXITCODE"; return [PSCustomObject]@{Changed=$true;Running=$false;Ready=$false} }
+    if ($LASTEXITCODE -ne 0) { Write-SupervisorLog "runtimes connect failed with exit code $LASTEXITCODE"; return [PSCustomObject]@{Changed=$true;Running=$false;Ready=$false;HealthUrl=[string]$status.healthUrl} }
     $null = Repair-TunnelProfile $Config
   } finally { Clear-RuntimeEnvironment }
   Start-Sleep -Seconds 2
   $after = Get-RuntimeStatus $Config
   $ok = $after.running -and $after.ready
   Write-SupervisorLog ('runtime reconnect ' + $(if($ok){'succeeded'}else{'did not become ready'}))
-  return [PSCustomObject]@{Changed=$true;Running=[bool]$after.running;Ready=[bool]$after.ready}
+  return [PSCustomObject]@{Changed=$true;Running=[bool]$after.running;Ready=[bool]$after.ready;HealthUrl=[string]$after.healthUrl}
 }
 
 $mutex = New-Object System.Threading.Mutex($false, $MutexName)
@@ -165,7 +184,12 @@ try {
   $script:RuntimeKey = Read-DpapiSecret
   Write-SupervisorLog 'supervisor started'
   do {
-    try { $null = Ensure-Runtime $exe $config } catch { Write-SupervisorLog ('ensure runtime error: ' + $_.Exception.Message) }
+    $iterationStatus = $null
+    try { $iterationStatus = Ensure-Runtime $exe $config } catch {
+      Write-SupervisorLog ('ensure runtime error: ' + $_.Exception.Message)
+      $iterationStatus = Get-RuntimeStatus $config
+    }
+    Write-SupervisorHeartbeat $config $iterationStatus
     if ($Once) { break }
     Start-Sleep -Seconds ([Math]::Max(10, $IntervalSeconds))
   } while ($true)

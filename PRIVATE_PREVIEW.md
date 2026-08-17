@@ -1,6 +1,6 @@
 # Codexzxm Private Preview 安装指南
 
-适用版本：`0.8.1-preview.0`
+适用版本：`0.8.2-preview.0`
 
 这份指南面向受邀测试者。Codexzxm 会把 ChatGPT 通过 MCP 连接到测试者自己的 Windows 或 Apple Silicon macOS，并在本机 Codex 已经明确授权的范围内执行文件、Git、进程、PTY、浏览器、Workflow 等操作。
 

@@ -103,12 +103,13 @@ $json = $config | ConvertTo-Json -Depth 5
 $startupDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
 New-Item -ItemType Directory -Force $startupDir | Out-Null
 $launcher = Join-Path $startupDir 'Codexzxm-Tunnel.vbs'
-$escapedSupervisor = $supervisor.Replace('"','""')
-$vbs = @"
+$heartbeatFile = Join-Path $stateRoot 'supervisor\heartbeat.json'
+$vbs = @'
 Set shell = CreateObject("WScript.Shell")
-shell.Run "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""$escapedSupervisor""", 0, False
-"@
-Set-Content -LiteralPath $launcher -Value $vbs -Encoding ASCII
+supervisor = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Codexzxm\scripts\codexzxm-tunnel-supervisor.ps1")
+shell.Run "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File """ & supervisor & """", 0, False
+'@
+[System.IO.File]::WriteAllText($launcher, $vbs + [Environment]::NewLine, [System.Text.Encoding]::ASCII)
 
 Write-Host 'Codexzxm Windows tunnel configuration saved outside the install tree.'
 Write-Host "Tunnel config: $configFile"
@@ -120,5 +121,23 @@ if (-not $NoStart) {
   if ($LASTEXITCODE -ne 0) { throw "Supervisor one-shot validation failed with exit code $LASTEXITCODE" }
   Write-Host 'Supervisor forced-reconnect validation completed.'
   & wscript.exe //B //Nologo $launcher
-  Write-Host 'Hidden supervisor watchdog launched.'
+  $watchdogReady = $false
+  $deadline = (Get-Date).AddSeconds(12)
+  do {
+    if (Test-Path -LiteralPath $heartbeatFile) {
+      try {
+        $heartbeat = [System.IO.File]::ReadAllText($heartbeatFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        $updated = [DateTimeOffset]::Parse([string]$heartbeat.updatedAt)
+        $age = [DateTimeOffset]::Now - $updated
+        $proc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$heartbeat.pid) -ErrorAction SilentlyContinue
+        if ($heartbeat.alias -eq $Alias -and $age.TotalSeconds -lt 90 -and $proc -and $proc.CommandLine -match 'codexzxm-tunnel-supervisor\.ps1') {
+          $watchdogReady = $true
+          break
+        }
+      } catch {}
+    }
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $deadline)
+  if (-not $watchdogReady) { throw "Hidden supervisor watchdog did not produce a live heartbeat: $heartbeatFile" }
+  Write-Host 'Hidden supervisor watchdog verified.'
 }
