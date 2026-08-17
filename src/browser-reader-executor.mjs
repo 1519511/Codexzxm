@@ -187,14 +187,17 @@ __cxJsonWrite(JSON.stringify({
 `, "Read Workbench-created Chrome tab DOM", { expectedGeneration: state.contextGeneration });
     } else {
       const providerLiteral = JSON.stringify(state.providerTabId);
-      result = await this.#runJson(effectiveCwd, `
+      result = await this.#runJsonWithSessionRecovery(effectiveCwd, `
 const __cxBrowser = await globalThis.__codexlessBrowserAgent.browsers.get("chrome");
 const __cxOpenTabs = await __cxBrowser.user.openTabs();
 const __cxInfo = __cxOpenTabs.find((tab) => tab.providerTabId === ${providerLiteral});
 if (!__cxInfo) throw new Error("CODEXLESS_BROWSER_TAB_STALE");
-const __cxTab = await __cxBrowser.user.claimTab(__cxInfo);
+const __cxSessionTabs = await __cxBrowser.tabs.list();
+const __cxAlreadyOwned = __cxSessionTabs.some((tab) => tab.id === __cxInfo.id);
+const __cxTab = __cxAlreadyOwned ? await __cxBrowser.tabs.get(__cxInfo.id) : await __cxBrowser.user.claimTab(__cxInfo);
 const __cxSnapshot = await __cxTab.playwright.domSnapshot();
 const __cxPayload = {
+  agentTabId: __cxTab.id,
   title: __cxInfo.title ?? null,
   url: __cxInfo.url ?? null,
   lastOpened: __cxInfo.lastOpened ?? null,
@@ -211,6 +214,7 @@ __cxJsonWrite(JSON.stringify(__cxPayload));
     const truncated = snapshot.length > maxChars;
     const current = {
       ...state,
+      agentTabId: stringOrNull(result?.agentTabId) ?? state.agentTabId,
       title: stringOrNull(result?.title) ?? state.title,
       url: stringOrNull(result?.url) ?? state.url,
       lastOpened: stringOrNull(result?.lastOpened) ?? state.lastOpened,
@@ -608,17 +612,20 @@ await __cxBrowser.nameSession("🧪 Codexless Workbench");
 const __cxOpenTabs = await __cxBrowser.user.openTabs();
 const __cxInfo = __cxOpenTabs.find((tab) => tab.providerTabId === ${providerLiteral});
 if (!__cxInfo) throw new Error("CODEXLESS_BROWSER_TAB_STALE");
-const __cxTab = await __cxBrowser.user.claimTab(__cxInfo);
+const __cxSessionTabs = await __cxBrowser.tabs.list();
+const __cxAlreadyOwned = __cxSessionTabs.some((tab) => tab.id === __cxInfo.id);
+const __cxTab = __cxAlreadyOwned ? await __cxBrowser.tabs.get(__cxInfo.id) : await __cxBrowser.user.claimTab(__cxInfo);
 let __cxActionResult = null;
 ${actionBody}
-const __cxPayload = { actionResult: __cxActionResult, title: await __cxTab.title(), url: await __cxTab.url() };
+const __cxPayload = { actionResult: __cxActionResult, agentTabId: __cxTab.id, title: await __cxTab.title(), url: await __cxTab.url() };
 __cxJsonWrite(JSON.stringify(__cxPayload));
 `;
     }
-    return this.#runJson(cwd, body, title, { expectedGeneration: state.contextGeneration });
+    return this.#runJsonWithSessionRecovery(cwd, body, title, { expectedGeneration: state.contextGeneration });
   }
 
   #actionResponse(state, result, action) {
+    state.agentTabId = stringOrNull(result?.agentTabId) ?? state.agentTabId;
     state.title = stringOrNull(result?.title) ?? state.title;
     state.url = stringOrNull(result?.url) ?? state.url;
     state.lastOpened = new Date().toISOString();
@@ -715,6 +722,18 @@ __cxJsonWrite(JSON.stringify(__cxBackends.map((backend) => ({
 }))));
 `, "Check connected browser backends");
     return Array.isArray(result) ? result.map(sanitizeBackend) : [];
+  }
+
+  async #runJsonWithSessionRecovery(cwd, body, title, { expectedGeneration = null } = {}) {
+    try {
+      return await this.#runJson(cwd, body, title, { expectedGeneration });
+    } catch (error) {
+      const ownerSessionId = extractBrowserOwnerSessionId(error);
+      if (!ownerSessionId || ownerSessionId === this.#sessionId) throw error;
+      this.#sessionId = ownerSessionId;
+      this.#turnSeq = 0;
+      return this.#runJson(cwd, body, title, { expectedGeneration });
+    }
   }
 
   async #runJson(cwd, body, title, { expectedGeneration = null } = {}) {
@@ -891,6 +910,12 @@ function assertBrowserPathWithin(root, target) {
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new BrowserReaderError("BROWSER_FILE_PATH_ESCAPE", `browser file transfer path escapes trusted root: ${target}`);
   }
+}
+
+function extractBrowserOwnerSessionId(error) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const match = /already part of browser session\s+([A-Za-z0-9._-]+)/i.exec(message);
+  return match?.[1] ?? null;
 }
 
 function browserUnavailable(error) {

@@ -1,6 +1,6 @@
 # Codexzxm on Apple Silicon macOS
 
-Codexzxm 0.7.2-preview.0 exposes the same **124-tool** private V6.1 contract on Apple Silicon macOS. The Mac is a separate execution host and must use its own Secure MCP Tunnel alias/name.
+Codexzxm 0.7.3-preview.0 exposes the same **124-tool** private V6.1 contract on Apple Silicon macOS. The Mac is a separate execution host and must use its own Secure MCP Tunnel alias/name.
 
 ## Install
 
