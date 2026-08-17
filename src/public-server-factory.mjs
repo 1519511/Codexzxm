@@ -38,7 +38,8 @@ export function createPublicServerFactory({
       .describe("Optional local working-directory context. cwd does not let the caller select or widen a permission profile."),
     access: z.enum(["inherit", "readOnly"]).default("readOnly")
       .describe("readOnly is the safe compatibility default. inherit uses the locally authorized/resolved Codex permission profile."),
-    timeoutMs: z.number().int().positive().max(30_000).default(10_000),
+    timeoutMs: z.number().int().min(0).default(600_000)
+      .describe("Command timeout in milliseconds. Default is 10 minutes. 0 disables the Codexzxm RPC timer and maps the underlying Codex command watchdog to the tested safe maximum (~24.85 days). External MCP/ChatGPT transport timeouts may still apply."),
   }).strict();
 
   return function createServer() {
@@ -62,7 +63,7 @@ export function createPublicServerFactory({
       {
         title: "Codex Model-Free Command",
         description:
-          "Run one buffered argv command through official Codex App Server command/exec without a Codex model turn. Codexzxm resolves the authorized Codex permission profile locally; the caller cannot select a stronger profile or permission envelope. This short-command lane has a 30-second hard limit; use workbench.process_start/read for long-running work. A bare executable name may be resolved through host PATH on Windows without changing authority.",
+          "Run one buffered argv command through official Codex App Server command/exec without a Codex model turn. Codexzxm resolves the authorized Codex permission profile locally; the caller cannot select a stronger profile or permission envelope. There is no 30-second Codexzxm hard limit: timeoutMs=0 disables the Codexzxm command/RPC timeout and the default is 10 minutes. Durable process/PTY tools remain preferable when work must survive an outer MCP/ChatGPT transport timeout or be reattached later. A bare executable name may be resolved through host PATH on Windows without changing authority.",
         inputSchema: commandSchema,
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
       },
@@ -86,6 +87,9 @@ export function createPublicServerFactory({
           if (typeof result.authoritySource === "string") payload.authoritySource = result.authoritySource;
           if (typeof result.trustedAncestor === "string") payload.trustedAncestor = result.trustedAncestor;
           if (result.executableResolution && typeof result.executableResolution === "object") payload.executableResolution = result.executableResolution;
+          if (Number.isInteger(result.commandTimeoutRequestedMs)) payload.commandTimeoutRequestedMs = result.commandTimeoutRequestedMs;
+          if (Number.isInteger(result.commandBackendWatchdogMs)) payload.commandBackendWatchdogMs = result.commandBackendWatchdogMs;
+          if (typeof result.commandRpcTimeoutDisabled === "boolean") payload.commandRpcTimeoutDisabled = result.commandRpcTimeoutDisabled;
           if (typeof result.resolutionSource === "string") payload.resolutionSource = result.resolutionSource;
           return {
             content: [{ type: "text", text: JSON.stringify(payload) }],

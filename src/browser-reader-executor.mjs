@@ -1,4 +1,6 @@
 import path from "node:path";
+import { constants as fsConstants } from "node:fs";
+import { copyFile, lstat, realpath, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
@@ -16,6 +18,7 @@ export class BrowserReaderError extends Error {
 
 export class CodexBrowserReaderExecutor {
   #context;
+  #authorityExecutor;
   #defaultCwd;
   #sessionId = `codexless-browser-${randomUUID()}`;
   #turnSeq = 0;
@@ -24,10 +27,11 @@ export class CodexBrowserReaderExecutor {
   #providerToRef = new Map();
   #contextGeneration = 0;
 
-  constructor({ context, defaultCwd }) {
+  constructor({ context, defaultCwd, authorityExecutor = null }) {
     if (!context) throw new Error("CodexBrowserReaderExecutor requires public context executor");
     if (!defaultCwd) throw new Error("CodexBrowserReaderExecutor requires defaultCwd");
     this.#context = context;
+    this.#authorityExecutor = authorityExecutor;
     this.#defaultCwd = path.resolve(defaultCwd);
     this.#contextGeneration = this.#currentGeneration();
   }
@@ -387,6 +391,145 @@ __cxActionResult = { logs: __cxLogs };
     return this.#actionResponse(state, result, result?.actionResult ?? { logs: [] });
   }
 
+  async backTab({ tabRef, cwd = this.#defaultCwd } = {}) {
+    const state = await this.#actionState(tabRef, cwd);
+    const result = await this.#runTabAction(state, path.resolve(cwd), `
+await __cxTab.back();
+__cxActionResult = { navigated: "back" };
+`, "Navigate Workbench Chrome tab back");
+    return this.#actionResponse(state, result, result?.actionResult ?? { navigated: "back" });
+  }
+
+  async forwardTab({ tabRef, cwd = this.#defaultCwd } = {}) {
+    const state = await this.#actionState(tabRef, cwd);
+    const result = await this.#runTabAction(state, path.resolve(cwd), `
+await __cxTab.forward();
+__cxActionResult = { navigated: "forward" };
+`, "Navigate Workbench Chrome tab forward");
+    return this.#actionResponse(state, result, result?.actionResult ?? { navigated: "forward" });
+  }
+
+  async dialogTab({ tabRef, action = "observe", text = "", cwd = this.#defaultCwd } = {}) {
+    const state = await this.#actionState(tabRef, cwd);
+    const normalized = ["observe", "accept", "dismiss"].includes(action) ? action : "observe";
+    const result = await this.#runTabAction(state, path.resolve(cwd), `
+const __cxDialog = await __cxTab.getJsDialog();
+if (!__cxDialog) {
+  __cxActionResult = { present: false, action: ${JSON.stringify(normalized)} };
+} else {
+  const __cxType = __cxDialog.type;
+  if (${JSON.stringify(normalized)} === "dismiss") {
+    await __cxDialog.dismiss();
+    __cxActionResult = { present: true, type: __cxType, action: "dismissed" };
+  } else if (${JSON.stringify(normalized)} === "accept") {
+    if (__cxType === "prompt") await __cxDialog.accept(${JSON.stringify(String(text ?? ""))});
+    else if (__cxType === "confirm") await __cxDialog.accept();
+    else throw new Error("CODEXLESS_BROWSER_DIALOG_ACCEPT_UNSUPPORTED:" + __cxType);
+    __cxActionResult = { present: true, type: __cxType, action: "accepted" };
+  } else {
+    __cxActionResult = { present: true, type: __cxType, action: "observed" };
+  }
+}
+`, "Handle Workbench Chrome JavaScript dialog");
+    return this.#actionResponse(state, result, result?.actionResult ?? { present: false, action: normalized });
+  }
+
+  async queryTab({ tabRef, locator, index = null, cwd = this.#defaultCwd, maxChars = 100000 } = {}) {
+    const state = await this.#actionState(tabRef, cwd);
+    const expression = browserLocatorExpression(locator);
+    const resolvedIndex = index === null || index === undefined ? null : index;
+    if (resolvedIndex !== null && (!Number.isInteger(resolvedIndex) || resolvedIndex < 0 || resolvedIndex > 10_000)) throw new BrowserReaderError("BROWSER_LOCATOR_INDEX_INVALID", "index must be null or a non-negative integer");
+    const cap = Number.isInteger(maxChars) ? Math.max(1000, Math.min(500000, maxChars)) : 100000;
+    const result = await this.#runTabAction(state, path.resolve(cwd), `
+let __cxLocator = ${expression};
+const __cxCount = await __cxLocator.count();
+${resolvedIndex === null ? "" : `if (${resolvedIndex} >= __cxCount) throw new Error(\"CODEXLESS_BROWSER_LOCATOR_INDEX:\" + __cxCount); __cxLocator = __cxLocator.nth(${resolvedIndex});`}
+const __cxTexts = await __cxLocator.allTextContents({ timeoutMs: 10000 });
+__cxActionResult = { matchedCount: __cxCount, texts: __cxTexts.map((value) => String(value).slice(0, ${cap})) };
+`, "Query Workbench Chrome elements");
+    return this.#actionResponse(state, result, result?.actionResult ?? { matchedCount: 0, texts: [] });
+  }
+
+  async uploadTab({ tabRef, locator, paths, index = null, cwd = this.#defaultCwd, timeoutMs = 15_000 } = {}) {
+    if (!Array.isArray(paths) || !paths.length || paths.length > 20) throw new BrowserReaderError("BROWSER_UPLOAD_PATHS_INVALID", "paths must contain 1-20 local file paths");
+    const state = await this.#actionState(tabRef, cwd);
+    const effectiveCwd = path.resolve(cwd);
+    const validated = await this.#validateUploadPaths(paths, effectiveCwd);
+    const locatorCode = browserLocatorCode(locator, index, "__cxLocator", "__cxCount");
+    const timeout = normalizeBrowserTimeout(timeoutMs);
+    const result = await this.#runTabAction(state, effectiveCwd, `
+${locatorCode}
+const __cxChooserPromise = __cxTab.playwright.waitForEvent("filechooser", { timeoutMs: ${timeout} });
+await __cxLocator.click({ timeoutMs: ${timeout} });
+const __cxChooser = await __cxChooserPromise;
+if (!__cxChooser.isMultiple() && ${validated.length} > 1) throw new Error("CODEXLESS_BROWSER_UPLOAD_MULTIPLE_REFUSED");
+await __cxChooser.setFiles(${JSON.stringify(validated)}, { timeoutMs: ${timeout} });
+__cxActionResult = { matchedCount: __cxCount, uploaded: true, fileCount: ${validated.length} };
+`, "Upload files in Workbench Chrome tab");
+    return this.#actionResponse(state, result, result?.actionResult ?? { uploaded: true, fileCount: validated.length });
+  }
+
+  async downloadTab({ tabRef, locator, outputPath, index = null, cwd = this.#defaultCwd, timeoutMs = 30_000, overwrite = false } = {}) {
+    const state = await this.#actionState(tabRef, cwd);
+    const effectiveCwd = path.resolve(cwd);
+    const destination = await this.#validateDownloadTarget(outputPath, effectiveCwd, overwrite === true);
+    const locatorCode = browserLocatorCode(locator, index, "__cxLocator", "__cxCount");
+    const timeout = normalizeBrowserTimeout(timeoutMs);
+    const result = await this.#runTabAction(state, effectiveCwd, `
+${locatorCode}
+const __cxDownloadPromise = __cxTab.playwright.waitForEvent("download", { timeoutMs: ${timeout} });
+await __cxLocator.click({ timeoutMs: ${timeout} });
+const __cxDownload = await __cxDownloadPromise;
+const __cxDownloadPath = await __cxDownload.path({ timeoutMs: ${timeout} });
+if (!__cxDownloadPath) throw new Error("CODEXLESS_BROWSER_DOWNLOAD_PATH_MISSING");
+__cxActionResult = { matchedCount: __cxCount, downloaded: true, temporaryPath: __cxDownloadPath };
+`, "Download file from Workbench Chrome tab");
+    const temporaryPath = result?.actionResult?.temporaryPath;
+    if (typeof temporaryPath !== "string" || !temporaryPath) throw new BrowserReaderError("BROWSER_DOWNLOAD_PATH_MISSING", "browser download completed without a local temporary path");
+    await copyFile(temporaryPath, destination, overwrite ? 0 : fsConstants.COPYFILE_EXCL);
+    const info = await stat(destination);
+    return this.#actionResponse(state, result, { matchedCount: result?.actionResult?.matchedCount ?? null, downloaded: true, outputPath: destination, bytes: info.size, overwrite: overwrite === true });
+  }
+
+  async #validateUploadPaths(paths, cwd) {
+    if (!this.#authorityExecutor) throw new BrowserReaderError("BROWSER_FILE_AUTHORITY_UNAVAILABLE", "browser file transfer requires an authority executor");
+    const authority = await this.#authorityExecutor.resolveAuthority({ cwd, access: "readOnly" });
+    const root = await realpath(authority.trustedAncestor ?? authority.effectiveCwd);
+    const validated = [];
+    for (const raw of paths) {
+      const lexical = path.resolve(cwd, String(raw));
+      const info = await lstat(lexical);
+      if (info.isSymbolicLink()) throw new BrowserReaderError("BROWSER_UPLOAD_SYMLINK_REFUSED", `upload path is a symbolic link: ${lexical}`);
+      const canonical = await realpath(lexical);
+      assertBrowserPathWithin(root, canonical);
+      const fileInfo = await stat(canonical);
+      if (!fileInfo.isFile()) throw new BrowserReaderError("BROWSER_UPLOAD_NOT_FILE", `upload target is not a regular file: ${canonical}`);
+      validated.push(canonical);
+    }
+    return validated;
+  }
+
+  async #validateDownloadTarget(outputPath, cwd, overwrite) {
+    if (!this.#authorityExecutor) throw new BrowserReaderError("BROWSER_FILE_AUTHORITY_UNAVAILABLE", "browser file transfer requires an authority executor");
+    const requested = requireNonEmptyString(outputPath, "outputPath");
+    const authority = await this.#authorityExecutor.resolveAuthority({ cwd, access: "inherit" });
+    if (authority?.permissionProfile === ":read-only") throw new BrowserReaderError("BROWSER_DOWNLOAD_WRITE_AUTHORITY_REQUIRED", "download output requires writable Codex authority");
+    const root = await realpath(authority.trustedAncestor ?? authority.effectiveCwd);
+    const lexical = path.resolve(authority.effectiveCwd, requested);
+    const parent = await realpath(path.dirname(lexical));
+    assertBrowserPathWithin(root, parent);
+    const destination = path.join(parent, path.basename(lexical));
+    assertBrowserPathWithin(root, destination);
+    try {
+      const existing = await lstat(destination);
+      if (existing.isSymbolicLink()) throw new BrowserReaderError("BROWSER_DOWNLOAD_SYMLINK_REFUSED", `download destination is a symbolic link: ${destination}`);
+      if (!overwrite) throw new BrowserReaderError("BROWSER_DOWNLOAD_EXISTS", `download destination already exists: ${destination}`);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    return destination;
+  }
+
   async closeCreatedTab({ tabRef, cwd = this.#defaultCwd } = {}) {
     const effectiveCwd = path.resolve(cwd);
     const state = await this.#actionState(tabRef, cwd);
@@ -664,33 +807,27 @@ function normalizeBrowserTimeout(value) {
   return value;
 }
 
-function browserLocatorCode(locator, index, variableName, countName) {
-  if (!locator || typeof locator !== "object") {
-    throw new BrowserReaderError("BROWSER_LOCATOR_INVALID", "locator must be an object");
-  }
+function browserLocatorExpression(locator) {
+  if (!locator || typeof locator !== "object") throw new BrowserReaderError("BROWSER_LOCATOR_INVALID", "locator must be an object");
   const kind = locator.kind;
   const exact = locator.exact === true;
-  let expression;
   if (kind === "role") {
     const role = requireNonEmptyString(locator.role, "locator.role");
     const options = {};
     if (typeof locator.name === "string" && locator.name.length) options.name = locator.name;
     if (Object.hasOwn(options, "name")) options.exact = exact;
-    expression = `__cxTab.playwright.getByRole(${JSON.stringify(role)}, ${JSON.stringify(options)})`;
-  } else if (kind === "text") {
-    expression = `__cxTab.playwright.getByText(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))}, { exact: ${exact} })`;
-  } else if (kind === "label") {
-    expression = `__cxTab.playwright.getByLabel(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))}, { exact: ${exact} })`;
-  } else if (kind === "placeholder") {
-    expression = `__cxTab.playwright.getByPlaceholder(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))}, { exact: ${exact} })`;
-  } else if (kind === "testId") {
-    expression = `__cxTab.playwright.getByTestId(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))})`;
-  } else if (kind === "css") {
-    expression = `__cxTab.playwright.locator(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))})`;
-  } else {
-    throw new BrowserReaderError("BROWSER_LOCATOR_KIND_INVALID", "locator.kind must be role, text, label, placeholder, testId, or css");
+    return `__cxTab.playwright.getByRole(${JSON.stringify(role)}, ${JSON.stringify(options)})`;
   }
+  if (kind === "text") return `__cxTab.playwright.getByText(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))}, { exact: ${exact} })`;
+  if (kind === "label") return `__cxTab.playwright.getByLabel(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))}, { exact: ${exact} })`;
+  if (kind === "placeholder") return `__cxTab.playwright.getByPlaceholder(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))}, { exact: ${exact} })`;
+  if (kind === "testId") return `__cxTab.playwright.getByTestId(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))})`;
+  if (kind === "css") return `__cxTab.playwright.locator(${JSON.stringify(requireNonEmptyString(locator.value, "locator.value"))})`;
+  throw new BrowserReaderError("BROWSER_LOCATOR_KIND_INVALID", "locator.kind must be role, text, label, placeholder, testId, or css");
+}
 
+function browserLocatorCode(locator, index, variableName, countName) {
+  const expression = browserLocatorExpression(locator);
   const resolvedIndex = index === null || index === undefined ? null : index;
   if (resolvedIndex !== null && (!Number.isInteger(resolvedIndex) || resolvedIndex < 0 || resolvedIndex > 10_000)) {
     throw new BrowserReaderError("BROWSER_LOCATOR_INDEX_INVALID", "index must be null or a non-negative integer");
@@ -733,6 +870,13 @@ function publicTab(state) {
 
 function stringOrNull(value) {
   return typeof value === "string" ? value : null;
+}
+
+function assertBrowserPathWithin(root, target) {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new BrowserReaderError("BROWSER_FILE_PATH_ESCAPE", `browser file transfer path escapes trusted root: ${target}`);
+  }
 }
 
 function browserUnavailable(error) {

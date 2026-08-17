@@ -54,7 +54,7 @@ for entry in src config scripts bin package.json README.md README.zh-CN.md SECUR
 done
 if [ -f "$SOURCE_ROOT/npm-shrinkwrap.json" ]; then cp "$SOURCE_ROOT/npm-shrinkwrap.json" "$STAGE_DIR/npm-shrinkwrap.json"; elif [ -f "$SOURCE_ROOT/package-lock.json" ]; then cp "$SOURCE_ROOT/package-lock.json" "$STAGE_DIR/package-lock.json"; else fail "Frozen npm lockfile is missing."; fi
 
-chmod +x "$STAGE_DIR/scripts/install-codexzxm.sh" "$STAGE_DIR/scripts/uninstall-codexzxm.sh" "$STAGE_DIR/scripts/codexzxm-tunnel-supervisor.sh" "$STAGE_DIR/scripts/enable-codexzxm-autostart.sh" "$STAGE_DIR/scripts/disable-codexzxm-autostart.sh" "$STAGE_DIR/bin/codexzxm-install.sh" "$STAGE_DIR/bin/codexzxm-doctor.sh" "$STAGE_DIR/bin/codexzxm-http.sh" "$STAGE_DIR/bin/codexzxm-stdio.sh" "$STAGE_DIR/bin/codexzxm-uninstall.sh" || fail "Failed to mark scripts executable."
+chmod +x "$STAGE_DIR/scripts/install-codexzxm.sh" "$STAGE_DIR/scripts/uninstall-codexzxm.sh" "$STAGE_DIR/scripts/codexzxm-tunnel-supervisor.sh" "$STAGE_DIR/scripts/enable-codexzxm-autostart.sh" "$STAGE_DIR/scripts/disable-codexzxm-autostart.sh" "$STAGE_DIR/scripts/codexzxm-secret-set.sh" "$STAGE_DIR/bin/codexzxm-install.sh" "$STAGE_DIR/bin/codexzxm-doctor.sh" "$STAGE_DIR/bin/codexzxm-http.sh" "$STAGE_DIR/bin/codexzxm-stdio.sh" "$STAGE_DIR/bin/codexzxm-uninstall.sh" || fail "Failed to mark scripts executable."
 
 (cd "$STAGE_DIR" && "$NPM" ci --omit=dev --ignore-scripts --no-audit --no-fund --cache "$CACHE_DIR" 1>&2) || fail "npm production dependency install failed."
 (cd "$STAGE_DIR" && CODEX_BIN="$CODEX_BIN_RESOLVED" "$NODE" scripts/doctor.mjs --json >/dev/null) || fail "Staging doctor failed."

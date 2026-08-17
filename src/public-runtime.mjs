@@ -90,7 +90,7 @@ export async function createPublicRuntime({ env = process.env } = {}) {
       defaultCwd,
       profileOverride,
       configOverrides,
-      maxTimeoutMs: 30_000,
+      maxTimeoutMs: 0,
       watchdogGraceMs: 5_000,
       outputBytesCap: 32_768,
       acceptedCodexVersions,
@@ -130,7 +130,7 @@ export async function createPublicRuntime({ env = process.env } = {}) {
       taskStateFile: agentTaskStateFile,
     });
 
-    const browserReader = new CodexBrowserReaderExecutor({ context: publicContext, defaultCwd });
+    const browserReader = new CodexBrowserReaderExecutor({ context: publicContext, defaultCwd, authorityExecutor });
     privateWorkbench = privateWorkbenchEnabled
       ? createPrivateWorkbench({
           authorityExecutor,

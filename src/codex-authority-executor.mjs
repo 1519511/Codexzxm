@@ -158,7 +158,7 @@ export class CodexAuthorityExecutor {
     defaultCwd = null,
     profileOverride = null,
     configOverrides = [],
-    maxTimeoutMs = 30_000,
+    maxTimeoutMs = 0,
     watchdogGraceMs = 5_000,
     outputBytesCap = 32_768,
     acceptedCodexVersions = ACCEPTED_CODEX_VERSIONS,
@@ -167,7 +167,7 @@ export class CodexAuthorityExecutor {
     if (defaultCwd !== null && (typeof defaultCwd !== "string" || !defaultCwd.trim())) throw new Error("defaultCwd must be a non-empty string when provided");
     if (profileOverride !== null && (typeof profileOverride !== "string" || !profileOverride.trim())) throw new Error("profileOverride must be a non-empty string when provided");
     if (!Array.isArray(configOverrides) || !configOverrides.every((value) => typeof value === "string" && value.trim())) throw new Error("configOverrides must be an array of non-empty Codex -c key=value strings");
-    if (!Number.isInteger(maxTimeoutMs) || maxTimeoutMs <= 0) throw new Error("maxTimeoutMs must be a positive integer");
+    if (!Number.isInteger(maxTimeoutMs) || maxTimeoutMs < 0) throw new Error("maxTimeoutMs must be a non-negative integer; 0 means no Codexzxm command timeout ceiling");
     if (!Number.isInteger(outputBytesCap) || outputBytesCap <= 0) throw new Error("outputBytesCap must be a positive integer");
     if (!Array.isArray(acceptedCodexVersions) || !acceptedCodexVersions.length || !acceptedCodexVersions.every((value) => typeof value === "string" && value)) throw new Error("acceptedCodexVersions must be a non-empty string array");
 
@@ -231,7 +231,7 @@ export class CodexAuthorityExecutor {
 
   async resolveAuthority({ cwd = null, access = "inherit", timeoutMs = 10_000 } = {}) {
     if (!SUPPORTED_ACCESS.has(access)) throw new Error(`unsupported access mode: ${access}`);
-    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > this.#maxTimeoutMs) throw new Error(`timeoutMs must be an integer between 1 and ${this.#maxTimeoutMs}`);
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || (this.#maxTimeoutMs > 0 && timeoutMs > this.#maxTimeoutMs)) throw new Error(this.#maxTimeoutMs > 0 ? `timeoutMs must be an integer between 1 and ${this.#maxTimeoutMs}` : "timeoutMs must be a positive integer for authority resolution");
     if (!this.#codexVersion) throw new Error("CodexAuthorityExecutor.validate() must succeed before resolveAuthority()");
     const requestedCwd = cwd ?? this.#defaultCwd;
     if (!requestedCwd) throw new Error("cwd is required when no local default cwd is configured");
@@ -242,10 +242,10 @@ export class CodexAuthorityExecutor {
     finally { await client.close(); }
   }
 
-  async exec({ command, cwd = null, access = "inherit", timeoutMs = 10_000 }) {
+  async exec({ command, cwd = null, access = "inherit", timeoutMs = 600_000 }) {
     if (!Array.isArray(command) || command.length === 0 || !command.every((item) => typeof item === "string")) throw new Error("command must be a non-empty argv string array");
     if (!SUPPORTED_ACCESS.has(access)) throw new Error(`unsupported access mode: ${access}`);
-    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > this.#maxTimeoutMs) throw new Error(`timeoutMs must be an integer between 1 and ${this.#maxTimeoutMs}`);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 0 || (this.#maxTimeoutMs > 0 && timeoutMs > this.#maxTimeoutMs)) throw new Error(this.#maxTimeoutMs > 0 ? `timeoutMs must be an integer between 0 and ${this.#maxTimeoutMs}` : "timeoutMs must be a non-negative integer; 0 disables the Codexzxm command timeout");
     if (!this.#codexVersion) throw new Error("CodexAuthorityExecutor.validate() must succeed before exec()");
 
     assertRemoteModelFreeMethod("command/exec");
@@ -253,13 +253,17 @@ export class CodexAuthorityExecutor {
     if (!requestedCwd) throw new Error("cwd is required when no local default cwd is configured");
     const effectiveCwd = await this.#validateCwd(requestedCwd);
     const executable = await resolveWindowsExecutable(command);
-    const client = this.#newClient(effectiveCwd, timeoutMs + this.#watchdogGraceMs);
+    const unbounded = timeoutMs === 0;
+    const backendTimeoutMs = unbounded ? 2_147_000_000 : timeoutMs;
+    const authorityTimeoutMs = unbounded ? 10_000 : Math.min(timeoutMs, 30_000);
+    const client = this.#newClient(effectiveCwd, unbounded ? 30_000 : timeoutMs + this.#watchdogGraceMs);
     await client.start();
     try {
-      const resolvedAuthority = await this.#resolveAuthorityWithClient(client, effectiveCwd, access, timeoutMs);
+      const resolvedAuthority = await this.#resolveAuthorityWithClient(client, effectiveCwd, access, authorityTimeoutMs);
+      const commandParams = { command: executable.command, cwd: effectiveCwd, permissionProfile: resolvedAuthority.permissionProfile, timeoutMs: backendTimeoutMs };
       const result = await client.exec(
-        { command: executable.command, cwd: effectiveCwd, permissionProfile: resolvedAuthority.permissionProfile, timeoutMs },
-        { timeoutMs: timeoutMs + this.#watchdogGraceMs }
+        commandParams,
+        { timeoutMs: unbounded ? 0 : timeoutMs + this.#watchdogGraceMs }
       );
       assertNoModelOrRuntimeSideEffects(client);
       const stdout = truncateUtf8(result.stdout, this.#outputBytesCap);
@@ -277,6 +281,9 @@ export class CodexAuthorityExecutor {
         authoritySource: resolvedAuthority.authoritySource,
         trustedAncestor: resolvedAuthority.trustedAncestor,
         executableResolution: executable.executableResolution,
+        commandTimeoutRequestedMs: timeoutMs,
+        commandBackendWatchdogMs: backendTimeoutMs,
+        commandRpcTimeoutDisabled: unbounded,
         notificationMethods: client.notificationMethods,
         serverRequestMethods: client.serverRequestMethods,
       };

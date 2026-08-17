@@ -81,7 +81,7 @@ await client.connect(transport);
 try {
   const tools = await client.listTools();
   const names = tools.tools.map((tool) => tool.name);
-  assert.equal(PRIVATE_WORKBENCH_SURFACE_VERSION, "codexzxm-private-v5.2");
+  assert.equal(PRIVATE_WORKBENCH_SURFACE_VERSION, "codexzxm-private-v6.1");
   assert.equal(names.length, PUBLIC_TOOL_NAMES.length + PRIVATE_WORKBENCH_TOOL_NAMES.length);
   for (const name of PUBLIC_TOOL_NAMES) assert.equal(names.includes(name), true, `missing public tool ${name}`);
   for (const name of PRIVATE_WORKBENCH_TOOL_NAMES) assert.equal(names.includes(name), true, `missing private Workbench tool ${name}`);

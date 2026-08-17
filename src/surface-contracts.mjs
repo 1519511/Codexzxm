@@ -1,4 +1,4 @@
-export const PUBLIC_SERVER_VERSION = "0.6.0-preview.0";
+export const PUBLIC_SERVER_VERSION = "0.7.0-preview.0";
 export const PUBLIC_SURFACE_VERSION = "codexzxm-compat-v1";
 
 export const PUBLIC_TOOL_NAMES = Object.freeze([
@@ -25,9 +25,22 @@ export const PUBLIC_TOOL_NAMES = Object.freeze([
   "codex.agent_cancel",
 ]);
 
-export const PRIVATE_WORKBENCH_SURFACE_VERSION = "codexzxm-private-v5.2";
+export const PRIVATE_WORKBENCH_SURFACE_VERSION = "codexzxm-private-v6.1";
 
 export const PRIVATE_WORKBENCH_TOOL_NAMES = Object.freeze([
+  "workbench.root_register",
+  "workbench.root_list",
+  "workbench.root_status",
+  "workbench.root_resolve",
+  "workbench.root_remove",
+  "workbench.secret_list",
+  "workbench.secret_metadata",
+  "workbench.pty_start",
+  "workbench.pty_list",
+  "workbench.pty_read",
+  "workbench.pty_send",
+  "workbench.pty_resize",
+  "workbench.pty_stop",
   "workbench.fs_list",
   "workbench.fs_tree",
   "workbench.fs_read",
@@ -37,6 +50,12 @@ export const PRIVATE_WORKBENCH_TOOL_NAMES = Object.freeze([
   "workbench.fs_move",
   "workbench.fs_copy",
   "workbench.fs_delete",
+  "workbench.fs_metadata",
+  "workbench.fs_copy_tree",
+  "workbench.fs_archive_create",
+  "workbench.fs_archive_extract",
+  "workbench.fs_delete_tree_plan",
+  "workbench.fs_delete_tree_commit",
   "workbench.project_search",
   "workbench.image_handoff_prepare",
   "workbench.process_start",
@@ -60,6 +79,9 @@ export const PRIVATE_WORKBENCH_TOOL_NAMES = Object.freeze([
   "workbench.browser_recover",
   "workbench.browser_open",
   "workbench.browser_navigate",
+  "workbench.browser_back",
+  "workbench.browser_forward",
+  "workbench.browser_dialog",
   "workbench.browser_reload",
   "workbench.browser_click",
   "workbench.browser_fill",
@@ -68,7 +90,21 @@ export const PRIVATE_WORKBENCH_TOOL_NAMES = Object.freeze([
   "workbench.browser_wait",
   "workbench.browser_screenshot",
   "workbench.browser_logs",
+  "workbench.browser_query",
+  "workbench.browser_upload",
+  "workbench.browser_download",
   "workbench.browser_close",
+  "workbench.pro_bridge_start",
+  "workbench.pro_bridge_status",
+  "workbench.pro_bridge_close",
+  "workbench.workflow_prepare",
+  "workbench.workflow_run",
+  "workbench.workflow_status",
+  "workbench.workflow_cancel",
+  "workbench.execution_prepare",
+  "workbench.execution_validate",
+  "workbench.execution_run",
+  "workbench.execution_status",
   "workbench.mcp_servers",
   "workbench.mcp_tools",
   "workbench.mcp_describe",

@@ -1,6 +1,6 @@
 # Codexzxm on Apple Silicon macOS
 
-Codexzxm keeps the same full private V5.2+ MCP surface on macOS. The Mac runtime is a separate execution host and should use its own Secure MCP Tunnel alias (recommended: `codexzxm-mac`).
+Codexzxm 0.7.0-preview.0 exposes the same **124-tool** private V6.1 contract on Apple Silicon macOS. The Mac is a separate execution host and must use its own Secure MCP Tunnel alias/name.
 
 ## Install
 
@@ -14,17 +14,44 @@ Default install root:
 ~/Library/Application Support/Codexzxm/app
 ```
 
-The installer requires Node.js 22+ and an accepted local Codex executable. It does not create Codex trust or widen permissions.
+Requirements: Apple Silicon macOS, Node.js 22+, a locally accepted Codex executable, and `tunnel-client` for the remote MCP tunnel.
 
-## Full local authority
+## Permanent authority
 
-The 88-tool surface remains registered. Tools that perform direct process/write/restore operations require Codex to resolve the target project to sufficient local authority. For the complete private workflow, configure and explicitly authorize the relevant Mac project/root in Codex and use an allowed `:danger-full-access` profile. Codexzxm fails closed when Codex does not grant that authority.
+V6.1 does not implement temporary permission leases. Register permanent aliases only for roots that local Codex already resolves to explicit `:danger-full-access` authority, for example:
 
-Computer Use remains exposed through the same `@oai/sky` backend. Availability depends on the Mac Codex/node_repl desktop backend; protected apps and terminals remain blocked by the Computer Use safety contract.
+```text
+workbench.root_register(alias="mac-home", cwd="/Users/you")
+workbench.root_register(alias="external-data", cwd="/Volumes/Data")
+```
 
-## Tunnel
+The alias remains stored until removed. Each use can revalidate current Codex authority; if local trust/profile is later changed, the alias reports drift and full-authority operations fail closed.
 
-Install or locate OpenAI `tunnel-client`, create a separate workspace-scoped tunnel for this Mac, then set a valid ordinary `OPENAI_API_KEY` in the shell and run:
+## PTY and filesystem
+
+The Mac surface includes durable real PTY sessions through `node-pty`, guarded file/tree operations, two-phase recursive delete, and `.tar/.tar.gz/.tgz` archive create/extract. Recursive delete uses a planRef plus a fresh digest check and is distinct from permission authority.
+
+## Secret Broker
+
+Create permanent secrets locally with:
+
+```sh
+"$HOME/Library/Application Support/Codexzxm/app/scripts/codexzxm-secret-set.sh" github-main "GitHub credential"
+```
+
+The value is stored in macOS Keychain. MCP exposes metadata only. Process/PTY `secretEnv` can inject a `secretRef` into a child environment without persisting plaintext.
+
+## Browser and Pro Web Bridge
+
+When the local Codex Chrome backend is available, V6.1 provides browser navigation, semantic actions, DOM query, file upload/download, JS dialog handling, screenshots/logs, and the Pro Web Bridge.
+
+The Pro Web Bridge opens a dedicated already-authenticated `chatgpt.com` tab, verifies the visibly available subscription thinking level (for example `Pro`), submits once, and later polls the same task. It does not use an OpenAI API gateway and does not start a Codex model turn.
+
+Browser/Computer Use availability remains dependent on the actual Mac Codex/Chrome desktop backend. Do not claim live Mac Computer Use support until the installed Mac has passed its own backend probe.
+
+## Tunnel and launchd
+
+Create a separate workspace-scoped tunnel for this Mac, then run:
 
 ```sh
 "$HOME/Library/Application Support/Codexzxm/app/scripts/enable-codexzxm-autostart.sh" \
@@ -34,9 +61,7 @@ Install or locate OpenAI `tunnel-client`, create a separate workspace-scoped tun
   --permission-profile :danger-full-access
 ```
 
-The API key is stored in macOS Keychain under service `com.codexzxm.openai-runtime`. Non-secret tunnel configuration is stored under `~/.config/codexzxm/`. A LaunchAgent `com.codexzxm.tunnel` keeps the runtime connected after login.
-
-Use `--proxy` only when the Mac network requires it.
+The ordinary runtime API key is stored in macOS Keychain; non-secret configuration lives under `~/.config/codexzxm`; LaunchAgent `com.codexzxm.tunnel` keeps the runtime connected after login.
 
 Check status:
 
@@ -44,10 +69,4 @@ Check status:
 "$HOME/Library/Application Support/Codexzxm/app/scripts/codexzxm-tunnel-supervisor.sh" --status
 ```
 
-Disable autostart while retaining credential/config:
-
-```sh
-"$HOME/Library/Application Support/Codexzxm/app/scripts/disable-codexzxm-autostart.sh" --keep-keychain --keep-config
-```
-
-Windows and Mac should not share one runtime alias/tunnel. Give each machine a distinct tunnel and ChatGPT app name so the execution host is unambiguous.
+Windows and Mac should use separate tunnel aliases so the execution host is unambiguous.

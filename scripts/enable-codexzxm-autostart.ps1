@@ -40,6 +40,9 @@ $Alias = Pick $Alias 'alias' 'codexzxm'
 $ProfileName = Pick $ProfileName 'profileName' $Alias
 $ProfileDir = Pick $ProfileDir 'profileDir' (Join-Path $stateRoot 'tunnel-profiles')
 $McpCommand = Pick $McpCommand 'mcpCommand' (Join-Path $installRoot 'bin\codexzxm-stdio.cmd')
+# tunnel-client parses mcp.command as a command string, so Windows backslashes can be consumed as escapes.
+# Normalize to forward slashes before persisting the command path; Unicode path segments remain valid.
+$McpCommand = $McpCommand.Replace('\','/')
 $Proxy = Pick $Proxy 'proxy' ''
 $DefaultCwd = Pick $DefaultCwd 'defaultCwd' $env:USERPROFILE
 $PermissionProfile = Pick $PermissionProfile 'permissionProfile' ':danger-full-access'

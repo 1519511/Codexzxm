@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/pr
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
+import { WorkbenchSecretBroker } from "../src/workbench-secret-broker.mjs";
 
 const execFileAsync = promisify(execFile);
 const MAX_EVENT_FILE_BYTES = 4 * 1024 * 1024;
@@ -56,13 +57,19 @@ let heartbeatTimer = null;
 
 await persistStatus();
 
+const secretBroker = new WorkbenchSecretBroker();
+const resolvedSecrets = await secretBroker.resolveEnvMap(config.secretEnv ?? {});
+status.secretEnvInjected = resolvedSecrets.injected;
+await persistStatus();
+
 const child = spawn(config.command[0], config.command.slice(1), {
   cwd: config.cwd,
-  env: { ...process.env, ...(config.env ?? {}) },
+  env: { ...process.env, ...(config.env ?? {}), ...resolvedSecrets.env },
   windowsHide: true,
   shell: false,
   stdio: ["pipe", "pipe", "pipe"],
 });
+for (const key of Object.keys(resolvedSecrets.env)) resolvedSecrets.env[key] = "";
 
 child.stdout?.setEncoding("utf8");
 child.stderr?.setEncoding("utf8");

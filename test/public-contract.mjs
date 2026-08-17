@@ -85,6 +85,9 @@ try {
   const skillListTool = tools.tools.find((tool) => tool.name === "codex.skill_list");
   const appOnlyCardToolNames = ["codex.agent_card_state", "codex.agent_decline", "codex.agent_commit"];
   assert.equal(commandTool?.annotations?.destructiveHint, true);
+  assert.equal(commandTool?.inputSchema?.properties?.timeoutMs?.minimum, 0);
+  assert.equal(commandTool?.inputSchema?.properties?.timeoutMs?.default, 600000);
+  assert.ok((commandTool?.inputSchema?.properties?.timeoutMs?.maximum ?? Number.MAX_SAFE_INTEGER) > 30_000, "command timeout schema must not retain the legacy 30-second ceiling");
   assert.equal(preciseEditTool?.annotations?.destructiveHint, true);
   assert.deepEqual(Object.keys(skillListTool?.inputSchema?.properties ?? {}).sort(), ["cwd", "query"]);
   assert.equal(Object.hasOwn(skillListTool?.inputSchema?.properties ?? {}, "kind"), false);

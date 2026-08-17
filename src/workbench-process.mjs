@@ -20,11 +20,17 @@ export class WorkbenchProcessManager {
     this.runnerPath = path.resolve(runnerPath ?? fileURLToPath(new URL("../scripts/workbench-process-runner.mjs", import.meta.url)));
   }
 
-  async start({ command, cwd, env = {}, label = null }) {
+  async start({ command, cwd, env = {}, secretEnv = {}, label = null }) {
     if (!Array.isArray(command) || !command.length || !command.every((value) => typeof value === "string")) {
       throw new Error("workbench process command must be a non-empty string array");
     }
     if (!env || typeof env !== "object" || Array.isArray(env)) throw new Error("workbench process env must be an object");
+    if (!secretEnv || typeof secretEnv !== "object" || Array.isArray(secretEnv)) throw new Error("workbench process secretEnv must be an object");
+    for (const [key, value] of Object.entries(secretEnv)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key)) throw new Error(`invalid secretEnv environment variable name: ${key}`);
+      if (typeof value !== "string" || !value.trim()) throw new Error(`secretEnv ${key} must reference a non-empty secretRef`);
+      if (Object.hasOwn(env, key)) throw new Error(`workbench process env/secretEnv collision for ${key}`);
+    }
     const active = (await this.list()).processes.filter((row) => ["starting", "running", "orphaned"].includes(row.state));
     if (active.length >= MAX_PROCESSES) throw new Error(`workbench process limit reached (${MAX_PROCESSES})`);
 
@@ -44,6 +50,7 @@ export class WorkbenchProcessManager {
       trustedAncestor: authority.trustedAncestor,
       permissionProfile: authority.permissionProfile,
       env: Object.fromEntries(Object.entries(env).map(([key, value]) => [String(key), String(value)])),
+      secretEnv: Object.fromEntries(Object.entries(secretEnv).map(([key, value]) => [String(key), String(value).trim()])),
       startedAt: new Date().toISOString(),
     };
     await writeFile(path.join(processDir, "config.json"), JSON.stringify(config, null, 2), { encoding: "utf8", flag: "wx" });
@@ -210,6 +217,7 @@ export class WorkbenchProcessManager {
       endedAt: status.endedAt ?? null,
       lastSeq: status.lastSeq ?? 0,
       runnerHeartbeatAt: status.runnerHeartbeatAt ?? null,
+      secretEnvInjected: Array.isArray(status.secretEnvInjected) ? status.secretEnvInjected.map((row) => ({ env: row.env, secretRef: row.secretRef })) : [],
       ...extra,
     };
   }

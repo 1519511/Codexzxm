@@ -1,9 +1,17 @@
 import { createRequire } from "node:module";
+import os from "node:os";
+import path from "node:path";
 import { WorkbenchComputerUse } from "./workbench-computer-use.mjs";
+import { WorkbenchExecutionManifest } from "./workbench-execution-manifest.mjs";
 import { WorkbenchFsGit } from "./workbench-fs-git.mjs";
 import { WorkbenchImageHandoff } from "./workbench-image-handoff.mjs";
 import { WorkbenchMcpHub } from "./workbench-mcp-hub.mjs";
 import { WorkbenchProcessManager } from "./workbench-process.mjs";
+import { WorkbenchPtyManager } from "./workbench-pty.mjs";
+import { WorkbenchRootRegistry } from "./workbench-root-registry.mjs";
+import { WorkbenchSecretBroker } from "./workbench-secret-broker.mjs";
+import { WorkbenchProBridge } from "./workbench-pro-bridge.mjs";
+import { WorkbenchWorkflowEngine, WORKFLOW_STEP_TYPES } from "./workbench-workflow.mjs";
 import { WorkbenchWorkspaceManager } from "./workbench-workspaces.mjs";
 
 const require = createRequire(import.meta.url);
@@ -22,6 +30,11 @@ export function createPrivateWorkbench({
   const fsGit = new WorkbenchFsGit({ authorityExecutor });
   const imageHandoff = new WorkbenchImageHandoff({ authorityExecutor });
   const processes = new WorkbenchProcessManager({ authorityExecutor, stateDir: processStateDir });
+  const stateRoot = path.join(os.homedir(), ".config", "codexzxm");
+  const roots = defaultCwd ? new WorkbenchRootRegistry({ authorityExecutor, stateDir: path.join(stateRoot, "roots-v1"), defaultCwd }) : null;
+  const secrets = new WorkbenchSecretBroker({ stateDir: path.join(stateRoot, "secrets-v1") });
+  const pty = new WorkbenchPtyManager({ authorityExecutor, stateDir: path.join(stateRoot, "pty-v1") });
+  const proBridge = browserReader && defaultCwd ? new WorkbenchProBridge({ browser: browserReader, stateDir: path.join(stateRoot, "pro-bridge-v1"), defaultCwd }) : null;
   const mcpHub = publicContext
     ? new WorkbenchMcpHub({ context: publicContext, allowedServers: mcpAllowedServers ?? undefined, allowCodexApps: mcpAllowCodexApps })
     : null;
@@ -31,15 +44,24 @@ export function createPrivateWorkbench({
   const workspaces = workspaceStateDir && defaultCwd
     ? new WorkbenchWorkspaceManager({ authorityExecutor, processManager: processes, stateDir: workspaceStateDir, defaultCwd })
     : null;
+  const workflowComponents = { fsGit, processes, pty, browser: browserReader, mcpHub, proBridge };
+  const workflow = roots && defaultCwd ? new WorkbenchWorkflowEngine({ components: workflowComponents, roots, stateDir: path.join(stateRoot, "workflows-v1"), defaultCwd }) : null;
+  const executionManifest = roots && workflow ? new WorkbenchExecutionManifest({ roots, workflow, stateDir: path.join(stateRoot, "execution-manifests-v1") }) : null;
   return {
     fsGit,
     imageHandoff,
     processes,
+    pty,
+    roots,
+    secrets,
+    proBridge,
+    workflow,
+    executionManifest,
     browser: browserReader,
     mcpHub,
     computerUse,
     workspaces,
-    async close() { await processes.close(); },
+    async close() { await Promise.allSettled([processes.close(), pty.close()]); },
   };
 }
 
@@ -58,6 +80,90 @@ export function registerPrivateWorkbenchTools(server, workbench) {
   ]);
   const browserIndex = z.number().int().min(0).max(10000).nullable().default(null);
   const browserTimeout = z.number().int().min(100).max(60000).default(10000);
+  const secretEnv = z.record(z.string(), z.string().min(1).max(64)).default({});
+
+  if (workbench.roots) {
+    register(server, "workbench.root_register", {
+      title: "Register Permanent Authorized Root",
+      description: "Persist a stable alias for a root that Codex already resolves to explicit :danger-full-access authority. Registration is permanent until removed and never creates or widens Codex trust.",
+      inputSchema: z.object({ alias: z.string().min(1).max(64), cwd, description: z.string().max(2000).nullable().default(null) }).strict(),
+      annotations: writeTool(),
+    }, (input) => workbench.roots.register(input));
+    register(server, "workbench.root_list", {
+      title: "List Permanent Authorized Roots",
+      description: "List permanent root aliases. refreshAuthority=true revalidates each alias against current Codex authority without changing permissions.",
+      inputSchema: z.object({ query: z.string().max(2000).default(""), refreshAuthority: z.boolean().default(false) }).strict(),
+      annotations: readOnly(false),
+    }, (input) => workbench.roots.list(input));
+    register(server, "workbench.root_status", {
+      title: "Check Permanent Root Authority",
+      description: "Revalidate one permanent root alias against current Codex trust and :danger-full-access authority.",
+      inputSchema: z.object({ alias: z.string().min(1).max(64) }).strict(),
+      annotations: readOnly(false),
+    }, (input) => workbench.roots.status(input));
+    register(server, "workbench.root_resolve", {
+      title: "Resolve Permanent Root Path",
+      description: "Resolve a root alias plus a relative path into an authority-checked local cwd. Refuses path escape and authority drift.",
+      inputSchema: z.object({ alias: z.string().min(1).max(64), path: z.string().min(1).max(32768).default(".") }).strict(),
+      annotations: readOnly(false),
+    }, (input) => workbench.roots.resolve(input));
+    register(server, "workbench.root_remove", {
+      title: "Remove Permanent Root Alias",
+      description: "Remove only the Codexzxm alias record. It does not change Codex trust, permissions, or local files.",
+      inputSchema: z.object({ alias: z.string().min(1).max(64) }).strict(),
+      annotations: writeTool(),
+    }, (input) => workbench.roots.remove(input));
+  }
+
+  register(server, "workbench.secret_list", {
+    title: "List Permanent Secret References",
+    description: "List secretRef metadata backed by Windows DPAPI or macOS Keychain. Secret plaintext is never returned.",
+    inputSchema: z.object({ query: z.string().max(2000).default("") }).strict(),
+    annotations: readOnly(false),
+  }, (input) => workbench.secrets.list(input));
+  register(server, "workbench.secret_metadata", {
+    title: "Read Secret Reference Metadata",
+    description: "Read metadata for one permanent secretRef without exposing its plaintext value.",
+    inputSchema: z.object({ alias: z.string().min(1).max(64) }).strict(),
+    annotations: readOnly(false),
+  }, (input) => workbench.secrets.metadata(input));
+
+  register(server, "workbench.pty_start", {
+    title: "Start Durable PTY Session",
+    description: "Start a true durable terminal/PTY session for interactive CLIs and REPLs. Requires explicit Codex :danger-full-access authority. secretEnv maps environment names to permanent secretRef values without persisting plaintext.",
+    inputSchema: z.object({ command: z.array(z.string().max(32768)).min(1).max(128).nullable().default(null), cwd, env: z.record(z.string(), z.string()).default({}), secretEnv, cols: z.number().int().min(20).max(500).default(120), rows: z.number().int().min(5).max(200).default(30), label: z.string().max(200).nullable().default(null) }).strict(),
+    annotations: processTool(),
+  }, (input) => workbench.pty.start(input));
+  register(server, "workbench.pty_list", {
+    title: "List Durable PTY Sessions",
+    description: "List Codexzxm-owned PTY sessions that remain discoverable across runtime restarts.",
+    inputSchema: z.object({}).strict(),
+    annotations: readOnly(true),
+  }, () => workbench.pty.list());
+  register(server, "workbench.pty_read", {
+    title: "Read PTY Output",
+    description: "Read bounded PTY output/events after a sequence number.",
+    inputSchema: z.object({ ptyRef: z.string().min(1).max(128), afterSeq: z.number().int().min(0).default(0), maxChars: z.number().int().min(1000).max(500000).default(50000) }).strict(),
+    annotations: readOnly(true),
+  }, (input) => workbench.pty.read(input));
+  register(server, "workbench.pty_send", {
+    title: "Send PTY Input",
+    description: "Send literal text to one running PTY session.",
+    inputSchema: z.object({ ptyRef: z.string().min(1).max(128), text: z.string().max(200000), appendNewline: z.boolean().default(false) }).strict(),
+    annotations: processTool(),
+  }, (input) => workbench.pty.send(input));
+  register(server, "workbench.pty_resize", {
+    title: "Resize PTY Session",
+    description: "Resize one running PTY session for TUI/interactive CLI compatibility.",
+    inputSchema: z.object({ ptyRef: z.string().min(1).max(128), cols: z.number().int().min(20).max(500), rows: z.number().int().min(5).max(200) }).strict(),
+    annotations: processTool(),
+  }, (input) => workbench.pty.resize(input));
+  register(server, "workbench.pty_stop", {
+    title: "Stop PTY Session",
+    description: "Stop one Codexzxm-owned PTY session; force=true requests forceful termination.",
+    inputSchema: z.object({ ptyRef: z.string().min(1).max(128), force: z.boolean().default(false) }).strict(),
+    annotations: processTool(),
+  }, (input) => workbench.pty.stop(input));
 
   register(server, "workbench.fs_list", {
     title: "Workbench List Directory",
@@ -133,6 +239,48 @@ export function registerPrivateWorkbenchTools(server, workbench) {
     annotations: writeTool(),
   }, (input) => workbench.fsGit.fsDelete(input));
 
+  register(server, "workbench.fs_metadata", {
+    title: "Workbench File/Tree Metadata",
+    description: "Read metadata for a regular file or directory. recursive=true performs a bounded symlink-refusing tree scan and content digest.",
+    inputSchema: z.object({ path: filePath, cwd, recursive: z.boolean().default(false), maxEntries: z.number().int().min(1).max(100000).default(10000) }).strict(),
+    annotations: readOnly(false),
+  }, (input) => workbench.fsGit.fsMetadata(input));
+
+  register(server, "workbench.fs_copy_tree", {
+    title: "Workbench Copy Directory Tree",
+    description: "Recursively copy one authority-bounded directory tree after refusing symbolic links/junctions. Destination must not exist and copied content is rescanned.",
+    inputSchema: z.object({ source: filePath, destination: filePath, cwd }).strict(),
+    annotations: writeTool(),
+  }, (input) => workbench.fsGit.fsCopyTree(input));
+
+  register(server, "workbench.fs_archive_create", {
+    title: "Workbench Create Tar Archive",
+    description: "Create an authority-bounded .tar/.tar.gz/.tgz archive from one regular file or symlink-free directory tree, with a bounded source-size check.",
+    inputSchema: z.object({ source: filePath, destination: filePath, cwd, maxBytes: z.number().int().min(1).max(2147483648).default(536870912) }).strict(),
+    annotations: writeTool(),
+  }, (input) => workbench.fsGit.fsArchiveCreate(input));
+
+  register(server, "workbench.fs_archive_extract", {
+    title: "Workbench Extract Tar Archive",
+    description: "Extract .tar/.tar.gz/.tgz content into a new authority-bounded directory after rejecting absolute paths, parent traversal, symlink entries, and hardlink entries.",
+    inputSchema: z.object({ archive: filePath, destination: filePath, cwd, maxEntries: z.number().int().min(1).max(100000).default(100000), maxBytes: z.number().int().min(1).max(2147483648).default(536870912) }).strict(),
+    annotations: writeTool(),
+  }, (input) => workbench.fsGit.fsArchiveExtract(input));
+
+  register(server, "workbench.fs_delete_tree_plan", {
+    title: "Plan Recursive Directory Delete",
+    description: "Scan a directory tree, refuse symlinks/critical system directories, and return a one-runtime planRef plus strong content digest. This plans an operation; it does not grant temporary authority.",
+    inputSchema: z.object({ path: filePath, cwd, maxEntries: z.number().int().min(1).max(100000).default(100000) }).strict(),
+    annotations: readOnly(false),
+  }, (input) => workbench.fsGit.fsDeleteTreePlan(input));
+
+  register(server, "workbench.fs_delete_tree_commit", {
+    title: "Commit Planned Recursive Delete",
+    description: "Execute one reviewed recursive-delete plan only when confirmedDelete=true and a fresh rescan exactly matches the planned digest. Plan refs are one-runtime/one-use and never widen permissions.",
+    inputSchema: z.object({ planRef: z.string().min(1).max(128), cwd, confirmedDelete: z.boolean().default(false) }).strict(),
+    annotations: writeTool(),
+  }, (input) => workbench.fsGit.fsDeleteTreeCommit(input));
+
   register(server, "workbench.project_search", {
     title: "Workbench Project Search",
     description: "Search filenames and UTF-8 text recursively inside an authorized project tree with bounded files and matches. Common build/vendor directories are excluded by default.",
@@ -183,6 +331,7 @@ export function registerPrivateWorkbenchTools(server, workbench) {
       command: z.array(z.string().max(32768)).min(1).max(128),
       cwd,
       env: z.record(z.string(), z.string()).default({}),
+      secretEnv,
       label: z.string().max(200).nullable().default(null),
     }).strict(),
     annotations: processTool(),
@@ -337,6 +486,27 @@ export function registerPrivateWorkbenchTools(server, workbench) {
       annotations: browserMutationTool(),
     }, (input) => workbench.browser.navigateTab(input));
 
+    register(server, "workbench.browser_back", {
+      title: "Workbench Navigate Chrome Back",
+      description: "Navigate one known Chrome tab backward in its browser history without replaying any other browser action.",
+      inputSchema: z.object({ tabRef: z.string().min(1).max(256), cwd }).strict(),
+      annotations: browserMutationTool(),
+    }, (input) => workbench.browser.backTab(input));
+
+    register(server, "workbench.browser_forward", {
+      title: "Workbench Navigate Chrome Forward",
+      description: "Navigate one known Chrome tab forward in its browser history.",
+      inputSchema: z.object({ tabRef: z.string().min(1).max(256), cwd }).strict(),
+      annotations: browserMutationTool(),
+    }, (input) => workbench.browser.forwardTab(input));
+
+    register(server, "workbench.browser_dialog", {
+      title: "Workbench Handle Chrome JavaScript Dialog",
+      description: "Observe, dismiss, or accept an active JavaScript confirm/prompt dialog. Alert/beforeunload acceptance is refused when the browser backend exposes dismiss only.",
+      inputSchema: z.object({ tabRef: z.string().min(1).max(256), action: z.enum(["observe", "accept", "dismiss"]).default("observe"), text: z.string().max(200000).default(""), cwd }).strict(),
+      annotations: browserMutationTool(),
+    }, (input) => workbench.browser.dialogTab(input));
+
     register(server, "workbench.browser_reload", {
       title: "Workbench Reload Chrome Tab",
       description: "Reload one known Chrome tabRef and wait for DOMContentLoaded when available. Useful after local web-app code changes.",
@@ -427,12 +597,122 @@ export function registerPrivateWorkbenchTools(server, workbench) {
       annotations: readOnly(true),
     }, (input) => workbench.browser.logsTab(input));
 
+    register(server, "workbench.browser_query", {
+      title: "Workbench Query Chrome DOM",
+      description: "Read rendered text for zero, one, or many DOM elements using a semantic locator. This is read-only and is suitable for polling dynamic UIs without requiring unique matches.",
+      inputSchema: z.object({ tabRef: z.string().min(1).max(256), locator: browserLocator, index: browserIndex, cwd, maxChars: z.number().int().min(1000).max(500000).default(100000) }).strict(),
+      annotations: readOnly(true),
+    }, (input) => workbench.browser.queryTab(input));
+
+    register(server, "workbench.browser_upload", {
+      title: "Workbench Upload Local Files in Chrome",
+      description: "Upload 1-20 authority-bounded regular local files through a real browser file chooser. Symlinks and paths outside the current Codex trusted root are refused.",
+      inputSchema: z.object({ tabRef: z.string().min(1).max(256), locator: browserLocator, paths: z.array(z.string().min(1).max(32768)).min(1).max(20), index: browserIndex, cwd, timeoutMs: browserTimeout.default(15000) }).strict(),
+      annotations: browserMutationTool(),
+    }, (input) => workbench.browser.uploadTab(input));
+
+    register(server, "workbench.browser_download", {
+      title: "Workbench Download Chrome File",
+      description: "Trigger one browser download and copy the downloaded bytes to an authority-bounded local output path. Existing destinations are refused unless overwrite=true.",
+      inputSchema: z.object({ tabRef: z.string().min(1).max(256), locator: browserLocator, outputPath: z.string().min(1).max(32768), index: browserIndex, cwd, timeoutMs: browserTimeout.default(30000), overwrite: z.boolean().default(false) }).strict(),
+      annotations: browserMutationTool(),
+    }, (input) => workbench.browser.downloadTab(input));
+
     register(server, "workbench.browser_close", {
       title: "Workbench Close Created Chrome Tab",
       description: "Close only a Chrome tab created by workbench.browser_open. Existing user tabs are deliberately refused.",
       inputSchema: z.object({ tabRef: z.string().min(1).max(256), cwd }).strict(),
       annotations: browserMutationTool(),
     }, (input) => workbench.browser.closeCreatedTab(input));
+  }
+
+  if (workbench.proBridge) {
+    register(server, "workbench.pro_bridge_start", {
+      title: "Start ChatGPT Web Pro Reasoning",
+      description: "Open a dedicated authenticated ChatGPT Web tab and submit an authorized reasoning task using the visibly available subscription thinking level (default Pro). This route uses the user's ChatGPT Web subscription, not the OpenAI API, and starts no Codex model turn.",
+      inputSchema: z.object({ prompt: z.string().min(1).max(180000), thinking: z.enum(["极速", "中", "高", "极高", "Pro"]).default("Pro"), files: z.array(z.string().min(1).max(32768)).max(20).default([]), cwd, title: z.string().max(500).nullable().default(null) }).strict(),
+      annotations: browserMutationTool(),
+    }, (input) => workbench.proBridge.start(input));
+    register(server, "workbench.pro_bridge_status", {
+      title: "Poll ChatGPT Web Pro Reasoning",
+      description: "Poll one dedicated ChatGPT Web reasoning task and return only newly generated assistant output when complete. It never re-sends an uncertain request.",
+      inputSchema: z.object({ bridgeRef: z.string().min(1).max(128), cwd }).strict(),
+      annotations: readOnly(true),
+    }, (input) => workbench.proBridge.status(input));
+    register(server, "workbench.pro_bridge_close", {
+      title: "Close ChatGPT Web Pro Bridge Tab",
+      description: "Close only the dedicated Workbench-created ChatGPT Web tab for one Pro Bridge task while preserving its persisted task record.",
+      inputSchema: z.object({ bridgeRef: z.string().min(1).max(128) }).strict(),
+      annotations: browserMutationTool(),
+    }, (input) => workbench.proBridge.close(input));
+  }
+
+  if (workbench.workflow) {
+    const workflowSteps = z.array(z.object({
+      id: z.string().min(1).max(64).optional(),
+      type: z.enum(WORKFLOW_STEP_TYPES),
+      args: z.record(z.string(), z.unknown()).default({}),
+    }).strict()).min(1).max(50);
+    register(server, "workbench.workflow_prepare", {
+      title: "Prepare Persistent Workflow",
+      description: "Persist a 1-50 step workflow rooted at a permanent authority alias. Step outcomes are checkpointed immediately so successful mutations are never replayed after failure or restart.",
+      inputSchema: z.object({ title: z.string().max(500).default("workflow"), rootAlias: z.string().min(1).max(64), basePath: z.string().min(1).max(32768).default("."), steps: workflowSteps }).strict(),
+      annotations: writeTool(),
+    }, (input) => workbench.workflow.prepare(input));
+    register(server, "workbench.workflow_run", {
+      title: "Run Persistent Workflow",
+      description: "Continue a prepared workflow from its first unfinished step. Pro Web reasoning steps enter waiting state and are polled later; uncertain mutations are never automatically replayed.",
+      inputSchema: z.object({ workflowRef: z.string().min(1).max(128), maxSteps: z.number().int().min(1).max(50).default(10) }).strict(),
+      annotations: processTool(),
+    }, (input) => workbench.workflow.run(input));
+    register(server, "workbench.workflow_status", {
+      title: "Read Workflow Status",
+      description: "Read durable workflow step states and bounded results without executing another step.",
+      inputSchema: z.object({ workflowRef: z.string().min(1).max(128) }).strict(),
+      annotations: readOnly(true),
+    }, (input) => workbench.workflow.status(input));
+    register(server, "workbench.workflow_cancel", {
+      title: "Cancel Workflow",
+      description: "Mark a workflow canceled so later run calls do not execute more steps. Already completed side effects are preserved and are not rolled back implicitly.",
+      inputSchema: z.object({ workflowRef: z.string().min(1).max(128) }).strict(),
+      annotations: writeTool(),
+    }, (input) => workbench.workflow.cancel(input));
+
+    if (workbench.executionManifest) {
+      register(server, "workbench.execution_prepare", {
+        title: "Prepare Pro Execution Manifest",
+        description: "Persist a codexzxm-pro-execution-manifest-v1 plan using permanent root aliases. There is no temporary permission lease and no API route in this protocol.",
+        inputSchema: z.object({
+          title: z.string().max(500).default("execution"),
+          rootAlias: z.string().min(1).max(64),
+          basePath: z.string().min(1).max(32768).default("."),
+          steps: workflowSteps,
+          assumptions: z.array(z.string().max(10000)).max(100).default([]),
+          verification: z.array(z.string().max(10000)).max(100).default([]),
+          rollback: z.record(z.string(), z.unknown()).nullable().default(null),
+          source: z.string().max(100).default("manual"),
+        }).strict(),
+        annotations: writeTool(),
+      }, (input) => workbench.executionManifest.prepare(input));
+      register(server, "workbench.execution_validate", {
+        title: "Validate Pro Execution Manifest",
+        description: "Validate a manifest's permanent root authority and workflow definition immediately before execution.",
+        inputSchema: z.object({ manifestRef: z.string().min(1).max(128) }).strict(),
+        annotations: readOnly(false),
+      }, (input) => workbench.executionManifest.validate(input));
+      register(server, "workbench.execution_run", {
+        title: "Run Pro Execution Manifest",
+        description: "Compile a validated Pro execution manifest into a durable workflow and continue it without replaying completed mutations.",
+        inputSchema: z.object({ manifestRef: z.string().min(1).max(128), maxSteps: z.number().int().min(1).max(50).default(10) }).strict(),
+        annotations: processTool(),
+      }, (input) => workbench.executionManifest.run(input));
+      register(server, "workbench.execution_status", {
+        title: "Read Pro Execution Manifest Status",
+        description: "Read manifest validation and its underlying durable workflow state.",
+        inputSchema: z.object({ manifestRef: z.string().min(1).max(128) }).strict(),
+        annotations: readOnly(true),
+      }, (input) => workbench.executionManifest.status(input));
+    }
   }
 
   if (workbench.mcpHub) {

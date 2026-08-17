@@ -1,21 +1,24 @@
 # Prompt for Codex on the Mac
 
-Use this after cloning the Codexzxm GitHub repository on an Apple Silicon Mac.
+Use this after cloning the private Codexzxm GitHub repository on an Apple Silicon Mac.
 
 ```text
-Take ownership of installing this Codexzxm repository on this Mac without using a Codex model turn for tasks that can be completed with local tools/commands.
+Take ownership of installing and validating this Codexzxm repository on this Mac. Do not start a Codex model turn for work that can be completed with local model-free commands/tools.
 
 Requirements:
 1. Read README.md and platform/macos/README.md first.
-2. Verify Apple Silicon, Node.js 22+, Git, local Codex, and tunnel-client. Do not silently install or change system-wide software unless necessary; explain any missing prerequisite.
-3. Run the repository's own bin/codexzxm-install.sh. Keep the full private MCP surface; do not replace it with a read-only/reduced surface.
-4. Run the installed doctor. If the local Codex version is newer than the accepted compatibility policy, inspect the compatibility code and test the actual authority projection before changing the accepted-version policy. Fail closed rather than guessing.
-5. Ensure the intended Mac project/root is explicitly trusted in Codex and that :danger-full-access is an allowed profile if I want the complete file/process/Git/workspace workflow. Do not create trust silently.
-6. Locate or install the official OpenAI tunnel-client if it is not already available. Do not invent a download URL; use an official current source.
-7. Create a NEW workspace-scoped Secure MCP Tunnel for this Mac, with a distinct alias/name such as codexzxm-mac / Codexzxm Mac. Do not reuse or modify my Windows Codexzxm tunnel.
-8. If an OpenAI Admin Key is required to create the remote tunnel, ask me to place it in a local environment variable or secure prompt; never ask me to paste the secret into chat and never write it to the repository.
-9. Set an ordinary OPENAI_API_KEY only in the local shell and run the installed enable-codexzxm-autostart.sh with the Mac tunnel ID. The script must store the runtime key in macOS Keychain and non-secret configuration in ~/.config/codexzxm.
-10. Verify the LaunchAgent, tunnel remote workspace scope, healthz/readyz, and the installed MCP tool count. Expected private surface: 88 tools for V5.2; use the repository's current declared count if it has advanced.
-11. Run tests that are valid on macOS. For Computer Use, report backend availability and test only safe/non-destructive targets. Do not hide unavailable capabilities.
-12. Report the final Mac tunnel alias/ID, installed version, tool count, doctor result, and any Mac-only limitations. Never print API/Admin keys.
+2. Verify Apple Silicon, Node.js 22+, Git, local Codex, and tunnel-client. Do not silently change system-wide software.
+3. Run bin/codexzxm-install.sh and preserve the full private V6.1 surface. Expected current contract: 124 tools. Do not replace it with a read-only/reduced surface.
+4. Run the installed doctor. If the local Codex build is newer than the accepted compatibility policy, inspect and test the actual authority projection before modifying the version gate. Fail closed rather than guessing.
+5. Configure the intended Mac roots in local Codex with explicit permanent trust/authority as required. Codexzxm must never create Codex trust by itself.
+6. Register stable permanent root aliases for the roots I authorize, such as mac-home and external-data. There is no temporary permission lease model.
+7. Test true PTY, process persistence, Git, guarded tree copy/delete-plan/delete-commit, and tar archive create/extract in a disposable fixture.
+8. Verify Secret Broker metadata and Keychain integration without printing any plaintext secret. Secret creation must use the local secure prompt script.
+9. Verify the Chrome backend if available: DOM query, safe test upload/download, back/forward/dialog behavior, and browser recovery. Do not claim unavailable backend features.
+10. Verify Pro Web Bridge against a dedicated logged-in ChatGPT Web tab with a harmless test prompt. It must use the visible subscription Pro thinking level, must not use OpenAI API billing, and must not start a Codex model turn. If a browser mutation outcome is uncertain, do not automatically resend it.
+11. Verify Workflow and codexzxm-pro-execution-manifest-v1 checkpointing: completed mutations must not replay after failure/restart; pro_reason must wait/poll the original Pro Bridge task.
+12. Create a NEW workspace-scoped Secure MCP Tunnel for this Mac with a distinct alias/name such as codexzxm-mac / Codexzxm Mac. Do not reuse or modify the Windows tunnel.
+13. If an OpenAI Admin Key is needed only for tunnel creation, have me enter it locally/securely; never paste or persist it in the repository. Store the ordinary runtime key in macOS Keychain through the provided autostart script.
+14. Verify LaunchAgent, remote workspace scope, healthz/readyz, installed version, exact MCP tool count, and npm tests that are valid on macOS.
+15. Report installed version, tool count, permanent roots, tunnel alias/ID, doctor/test results, and any Mac-only limitation. Never print secrets.
 ```

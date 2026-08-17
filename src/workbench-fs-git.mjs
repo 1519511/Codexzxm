@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
+import { access, copyFile, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { resolveCodexExecutable } from "./codex-bin.mjs";
@@ -13,6 +13,7 @@ export class WorkbenchFsGit {
   constructor({ authorityExecutor }) {
     if (!authorityExecutor) throw new Error("WorkbenchFsGit requires authorityExecutor");
     this.authorityExecutor = authorityExecutor;
+    this.deleteTreePlans = new Map();
   }
 
   async fsList({ path: requestedPath = ".", cwd }) {
@@ -168,6 +169,123 @@ export class WorkbenchFsGit {
       return this.#meta(authority, root, { status: "deleted", path: target, type: "directory" });
     }
     throw new Error("workbench delete supports regular files and empty directories only");
+  }
+
+  async fsMetadata({ path: requestedPath, cwd, recursive = false, maxEntries = 10000 } = {}) {
+    const { authority, root, target } = await this.#existing({ requestedPath, cwd, access: "readOnly", kind: "any" });
+    const info = await stat(target);
+    if (info.isFile()) {
+      const bytes = await readFile(target);
+      return this.#meta(authority, root, { path: target, type: "file", size: info.size, mtime: info.mtime.toISOString(), sha256: sha256(bytes) });
+    }
+    if (!recursive) return this.#meta(authority, root, { path: target, type: "directory", size: info.size, mtime: info.mtime.toISOString() });
+    const scan = await scanDirectoryTree(target, root, { maxEntries });
+    return this.#meta(authority, root, { path: target, type: "directory", recursive: true, ...scan });
+  }
+
+  async fsCopyTree({ source, destination, cwd }) {
+    const { authority, root, target: sourcePath } = await this.#existing({ requestedPath: source, cwd, access: "inherit", kind: "directory" });
+    assertWritableAuthority(authority);
+    const destinationPath = await creatableTarget({ requestedPath: destination, cwd: authority.effectiveCwd, root });
+    await assertMissing(destinationPath);
+    await scanDirectoryTree(sourcePath, root, { maxEntries: 100000 });
+    await cp(sourcePath, destinationPath, { recursive: true, force: false, errorOnExist: true, dereference: false });
+    const verified = await scanDirectoryTree(destinationPath, root, { maxEntries: 100000 });
+    return this.#meta(authority, root, { status: "copied", source: sourcePath, destination: destinationPath, ...verified });
+  }
+
+  async fsArchiveCreate({ source, destination, cwd, maxBytes = 536870912 } = {}) {
+    const { authority, root, target: sourcePath, info: sourceInfo } = await this.#existing({ requestedPath: source, cwd, access: "inherit", kind: "any" });
+    assertWritableAuthority(authority);
+    const destinationPath = await creatableTarget({ requestedPath: destination, cwd: authority.effectiveCwd, root });
+    await assertMissing(destinationPath);
+    if (sourceInfo.isDirectory() && isWithin(sourcePath, destinationPath)) throw new Error("workbench archive destination cannot be inside the source directory tree");
+    let bytes = sourceInfo.size;
+    let entries = 1;
+    if (sourceInfo.isDirectory()) {
+      const scan = await scanDirectoryTree(sourcePath, root, { maxEntries: 100000 });
+      bytes = scan.bytes;
+      entries = scan.entries;
+    }
+    if (bytes > maxBytes) throw new Error(`workbench archive source exceeds maxBytes=${maxBytes}`);
+    const args = archiveCreateArgs(destinationPath, path.basename(sourcePath));
+    const result = await this.authorityExecutor.exec({ command: ["tar", ...args], cwd: path.dirname(sourcePath), access: "inherit", timeoutMs: 30000 });
+    if (result.exitCode !== 0) throw new Error(`workbench archive create failed: ${result.stderr || result.stdout}`);
+    const archiveInfo = await stat(destinationPath);
+    return this.#meta(authority, root, { status: "created", source: sourcePath, destination: destinationPath, sourceBytes: bytes, sourceEntries: entries, archiveBytes: archiveInfo.size });
+  }
+
+  async fsArchiveExtract({ archive, destination, cwd, maxEntries = 100000, maxBytes = 536870912 } = {}) {
+    const { authority, root, target: archivePath } = await this.#existing({ requestedPath: archive, cwd, access: "inherit", kind: "file" });
+    assertWritableAuthority(authority);
+    const destinationPath = await creatableTarget({ requestedPath: destination, cwd: authority.effectiveCwd, root });
+    await assertMissing(destinationPath);
+    const list = await this.authorityExecutor.exec({ command: ["tar", "-tf", archivePath], cwd: authority.effectiveCwd, access: "readOnly", timeoutMs: 30000 });
+    if (list.exitCode !== 0) throw new Error(`workbench archive list failed: ${list.stderr || list.stdout}`);
+    const names = String(list.stdout ?? "").split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    if (names.length > maxEntries) throw new Error(`workbench archive contains more than maxEntries=${maxEntries}`);
+    for (const name of names) validateArchiveEntryName(name);
+    const verbose = await this.authorityExecutor.exec({ command: ["tar", "-tvf", archivePath], cwd: authority.effectiveCwd, access: "readOnly", timeoutMs: 30000 });
+    if (verbose.exitCode !== 0) throw new Error(`workbench archive verbose-list failed: ${verbose.stderr || verbose.stdout}`);
+    for (const line of String(verbose.stdout ?? "").split(/\r?\n/).filter(Boolean)) {
+      const type = line[0];
+      if (type === "l" || type === "h") throw new Error("workbench archive extract refuses symbolic-link or hard-link entries");
+    }
+    await mkdir(destinationPath);
+    try {
+      const result = await this.authorityExecutor.exec({ command: ["tar", "-xf", archivePath, "-C", destinationPath], cwd: authority.effectiveCwd, access: "inherit", timeoutMs: 30000 });
+      if (result.exitCode !== 0) throw new Error(`workbench archive extract failed: ${result.stderr || result.stdout}`);
+      const scan = await scanDirectoryTree(destinationPath, root, { maxEntries });
+      if (scan.bytes > maxBytes) throw new Error(`workbench extracted content exceeds maxBytes=${maxBytes}`);
+      return this.#meta(authority, root, { status: "extracted", archive: archivePath, destination: destinationPath, ...scan });
+    } catch (error) {
+      await rm(destinationPath, { recursive: true, force: true }).catch(() => {});
+      throw error;
+    }
+  }
+
+  async fsDeleteTreePlan({ path: requestedPath, cwd, maxEntries = 100000 } = {}) {
+    const { authority, root, target } = await this.#existing({ requestedPath, cwd, access: "readOnly", kind: "directory" });
+    if (samePath(root, target)) throw new Error("workbench recursive delete refused: cannot delete authority root");
+    refuseCriticalDeleteTarget(target);
+    const scan = await scanDirectoryTree(target, root, { maxEntries });
+    const planRef = `delete_plan_${randomUUID()}`;
+    const plan = {
+      planRef,
+      target,
+      root,
+      cwd: authority.effectiveCwd,
+      digest: scan.digest,
+      entries: scan.entries,
+      files: scan.files,
+      directories: scan.directories,
+      bytes: scan.bytes,
+      createdAt: new Date().toISOString(),
+      consumed: false,
+    };
+    this.deleteTreePlans.set(planRef, plan);
+    return this.#meta(authority, root, { ...plan, consumed: false });
+  }
+
+  async fsDeleteTreeCommit({ planRef, cwd, confirmedDelete = false } = {}) {
+    if (confirmedDelete !== true) throw new Error("workbench recursive delete requires confirmedDelete=true after reviewing delete_tree_plan");
+    const plan = this.deleteTreePlans.get(planRef);
+    if (!plan || plan.consumed) throw new Error(`unknown, consumed, or runtime-stale recursive delete plan: ${String(planRef)}`);
+    const authority = await this.authorityExecutor.resolveAuthority({ cwd: cwd ?? plan.cwd, access: "inherit" });
+    assertWritableAuthority(authority);
+    const root = await canonicalRoot(authority);
+    if (!samePath(root, plan.root)) throw new Error("workbench recursive delete refused: authority root changed after planning");
+    const target = await realpath(plan.target);
+    if (!samePath(target, plan.target)) throw new Error("workbench recursive delete refused: target path changed after planning");
+    refuseCriticalDeleteTarget(target);
+    const current = await scanDirectoryTree(target, root, { maxEntries: Math.max(1000, plan.entries + 1) });
+    if (current.digest !== plan.digest || current.entries !== plan.entries || current.bytes !== plan.bytes) {
+      throw new Error("workbench recursive delete refused: directory contents changed after planning; create a new plan");
+    }
+    await rm(target, { recursive: true, force: false });
+    plan.consumed = true;
+    this.deleteTreePlans.set(planRef, plan);
+    return this.#meta(authority, root, { status: "deleted", planRef, path: target, entries: current.entries, files: current.files, directories: current.directories, bytes: current.bytes, digest: current.digest });
   }
 
   async projectSearch({ query, cwd, path: requestedPath = ".", regex = false, caseSensitive = false, maxMatches = 200, maxFiles = 3000, maxFileBytes = 2000000, excludeDirs = [] }) {
@@ -396,6 +514,75 @@ function assertWithin(root, target) {
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error(`workbench refused path outside trusted root: ${target}`);
   }
+}
+
+function archiveCreateArgs(destinationPath, sourceBasename) {
+  const lower = destinationPath.toLowerCase();
+  if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return ["-czf", destinationPath, sourceBasename];
+  if (lower.endsWith(".tar")) return ["-cf", destinationPath, sourceBasename];
+  throw new Error("workbench archive supports .tar, .tar.gz, and .tgz destinations only");
+}
+
+function validateArchiveEntryName(name) {
+  const normalized = String(name).replaceAll("\\", "/");
+  if (!normalized || normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) throw new Error(`workbench archive refuses absolute entry path: ${name}`);
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.some((part) => part === "..")) throw new Error(`workbench archive refuses parent-traversal entry: ${name}`);
+}
+
+function isWithin(root, target) {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+async function scanDirectoryTree(target, root, { maxEntries = 100000 } = {}) {
+  const digest = createHash("sha256");
+  let entries = 0;
+  let files = 0;
+  let directories = 0;
+  let bytes = 0;
+  const walk = async (directory) => {
+    const children = await readdir(directory, { withFileTypes: true });
+    children.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of children) {
+      entries += 1;
+      if (entries > maxEntries) throw new Error(`workbench tree scan exceeds maxEntries=${maxEntries}`);
+      const lexical = path.join(directory, entry.name);
+      const linkInfo = await lstat(lexical);
+      if (entry.isSymbolicLink() || linkInfo.isSymbolicLink()) throw new Error(`workbench tree operation refused symbolic link/junction: ${lexical}`);
+      const canonical = await realpath(lexical);
+      assertWithin(root, canonical);
+      const relative = path.relative(target, canonical).replaceAll("\\", "/");
+      const info = await stat(canonical);
+      if (info.isDirectory()) {
+        directories += 1;
+        digest.update(`D\0${relative}\0${info.mtimeMs}\n`);
+        await walk(canonical);
+      } else if (info.isFile()) {
+        files += 1;
+        bytes += info.size;
+        const fileHash = sha256(await readFile(canonical));
+        digest.update(`F\0${relative}\0${info.size}\0${fileHash}\n`);
+      } else {
+        throw new Error(`workbench tree operation supports regular files/directories only: ${canonical}`);
+      }
+    }
+  };
+  await walk(target);
+  return { entries, files, directories, bytes, digest: digest.digest("hex") };
+}
+
+function refuseCriticalDeleteTarget(target) {
+  const resolved = path.resolve(target);
+  const critical = [];
+  if (process.platform === "win32") {
+    for (const value of [process.env.WINDIR, process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.ProgramData]) {
+      if (value) critical.push(path.resolve(value));
+    }
+  } else if (process.platform === "darwin") {
+    critical.push("/System", "/Library", "/Applications", "/Users", "/private");
+  }
+  if (critical.some((value) => samePath(value, resolved))) throw new Error(`workbench recursive delete hard-refuses critical system directory: ${resolved}`);
 }
 
 async function resolveRipgrepExecutable() {
