@@ -2,7 +2,7 @@
 
 Codexzxm is a private local execution plane that lets ChatGPT use authority-bounded tools on the user's own Windows or Apple Silicon macOS machine through MCP. It is derived from the Apache-2.0 licensed Codexless project. Local model-free execution, ChatGPT Web subscription reasoning, and optional Codex Agent escalation are separate lanes.
 
-Current package: `0.7.0-preview.0`
+Current package: `0.7.1-preview.0`
 Private surface: `codexzxm-private-v6.1`
 Exact tool contract: **124 MCP tools** = 21 compatibility tools + 94 private Workbench tools.
 

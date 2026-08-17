@@ -90,8 +90,11 @@ export class CodexBrowserReaderExecutor {
     const rawTabs = await this.#runJson(effectiveCwd, `
 const __cxBrowser = await globalThis.__codexlessBrowserAgent.browsers.get("chrome");
 const __cxTabs = await __cxBrowser.user.openTabs();
+const __cxSessionTabs = await __cxBrowser.tabs.list();
+const __cxSessionIds = new Set(__cxSessionTabs.map((tab) => tab.id));
 nodeRepl.write(JSON.stringify(__cxTabs.map((tab) => ({
   providerTabId: tab.providerTabId,
+  agentTabId: __cxSessionIds.has(tab.id) ? tab.id : null,
   title: tab.title ?? null,
   url: tab.url ?? null,
   lastOpened: tab.lastOpened ?? null,
@@ -118,7 +121,7 @@ nodeRepl.write(JSON.stringify(__cxTabs.map((tab) => ({
         ...previous,
         tabRef,
         providerTabId,
-        agentTabId: null,
+        agentTabId: typeof raw?.agentTabId === "string" && raw.agentTabId ? raw.agentTabId : null,
         createdByWorkbench: previous?.createdByWorkbench === true,
         contextGeneration: this.#contextGeneration,
         title: stringOrNull(raw.title),
@@ -246,6 +249,7 @@ const __cxInfo = __cxOpenTabs.find((tab) => tab.id === __cxTab.id);
 if (!__cxInfo?.providerTabId) throw new Error("CODEXLESS_BROWSER_PROVIDER_TAB_ID_MISSING");
 nodeRepl.write(JSON.stringify({
   providerTabId: __cxInfo.providerTabId,
+  agentTabId: __cxTab.id,
   title: __cxInfo.title ?? await __cxTab.title(),
   url: __cxInfo.url ?? await __cxTab.url(),
   lastOpened: __cxInfo.lastOpened ?? null,
@@ -258,7 +262,7 @@ nodeRepl.write(JSON.stringify({
     const state = {
       tabRef,
       providerTabId,
-      agentTabId: null,
+      agentTabId: typeof result?.agentTabId === "string" && result.agentTabId ? result.agentTabId : null,
       createdByWorkbench: true,
       contextGeneration: this.#contextGeneration,
       title: stringOrNull(result?.title),

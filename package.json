@@ -1,6 +1,6 @@
 {
   "name": "codexzxm",
-  "version": "0.7.0-preview.0",
+  "version": "0.7.1-preview.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "Codexzxm: a permanent-authority local execution plane for ChatGPT on Windows and Apple Silicon macOS with 124 MCP tools, PTY, browser file transfer, Pro Web Bridge, workflows, secrets, and persistent workspaces.",
@@ -20,14 +20,15 @@
     "test:workbench:workspace": "node test/workbench-workspace-unit.mjs",
     "test:workbench:computer": "node test/workbench-computer-contract.mjs",
     "test:workbench": "node test/workbench-contract.mjs",
-    "test": "node test/public-contract.mjs && node test/codex-version-policy-unit.mjs && node test/workbench-surface-unit.mjs && node test/workbench-unit.mjs && node test/workbench-v61-unit.mjs && node test/workbench-image-handoff-unit.mjs && node test/workbench-git-hardening-unit.mjs && node test/workbench-process-durable-unit.mjs && node test/workbench-workspace-unit.mjs && node test/workbench-computer-contract.mjs && node test/workbench-contract.mjs",
+    "test": "node test/public-contract.mjs && node test/codex-version-policy-unit.mjs && node test/workbench-surface-unit.mjs && node test/workbench-unit.mjs && node test/workbench-v61-unit.mjs && node test/browser-session-reuse-unit.mjs && node test/workbench-image-handoff-unit.mjs && node test/workbench-git-hardening-unit.mjs && node test/workbench-process-durable-unit.mjs && node test/workbench-workspace-unit.mjs && node test/workbench-computer-contract.mjs && node test/workbench-contract.mjs",
     "start:compat:stdio": "node scripts/launch.mjs stdio",
     "start:compat:http": "node scripts/launch.mjs http",
     "test:version-policy": "node test/codex-version-policy-unit.mjs",
     "test:workbench:git-hardening": "node test/workbench-git-hardening-unit.mjs",
     "test:workbench:process-durable": "node test/workbench-process-durable-unit.mjs",
     "test:workbench:image-handoff": "node test/workbench-image-handoff-unit.mjs",
-    "test:workbench:v61": "node test/workbench-v61-unit.mjs"
+    "test:workbench:v61": "node test/workbench-v61-unit.mjs",
+    "test:workbench:browser-session": "node test/browser-session-reuse-unit.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "2.0.0",

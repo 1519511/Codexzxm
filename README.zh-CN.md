@@ -2,7 +2,7 @@
 
 Codexzxm 是一个私有本地执行控制面，让 ChatGPT 通过 MCP 使用你自己 Windows 或 Apple Silicon Mac 上、受 Codex 本地权限约束的工具。项目基于 Apache-2.0 的 Codexless 演化而来。本地 model-free 执行、ChatGPT Web 订阅推理、以及可选的 Codex Agent 调用是三条独立通道。
 
-当前版本：`0.7.0-preview.0`
+当前版本：`0.7.1-preview.0`
 私有 Surface：`codexzxm-private-v6.1`
 精确工具合同：**124 个 MCP 工具** = 21 个兼容工具 + 103 个私有 Workbench 工具。
 
