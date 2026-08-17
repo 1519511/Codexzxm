@@ -1,0 +1,62 @@
+{
+  "name": "codexzxm",
+  "version": "0.6.0-preview.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Codexzxm: a private local agent runtime for ChatGPT on Windows and Apple Silicon macOS with filesystem, process, Git, browser, MCP hub, Computer Use, image handoff, and persistent workspaces.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start:stdio": "node scripts/codexzxm-launch.mjs stdio",
+    "start:http": "node scripts/codexzxm-launch.mjs http",
+    "start:workbench:stdio": "node scripts/workbench-launch.mjs stdio",
+    "start:workbench:http": "node scripts/workbench-launch.mjs http",
+    "doctor": "node scripts/doctor.mjs",
+    "test:contract": "node test/public-contract.mjs",
+    "test:workbench:surface": "node test/workbench-surface-unit.mjs",
+    "test:workbench:unit": "node test/workbench-unit.mjs",
+    "test:workbench:workspace": "node test/workbench-workspace-unit.mjs",
+    "test:workbench:computer": "node test/workbench-computer-contract.mjs",
+    "test:workbench": "node test/workbench-contract.mjs",
+    "test": "node test/public-contract.mjs && node test/codex-version-policy-unit.mjs && node test/workbench-surface-unit.mjs && node test/workbench-unit.mjs && node test/workbench-image-handoff-unit.mjs && node test/workbench-git-hardening-unit.mjs && node test/workbench-process-durable-unit.mjs && node test/workbench-workspace-unit.mjs && node test/workbench-computer-contract.mjs && node test/workbench-contract.mjs",
+    "start:compat:stdio": "node scripts/launch.mjs stdio",
+    "start:compat:http": "node scripts/launch.mjs http",
+    "test:version-policy": "node test/codex-version-policy-unit.mjs",
+    "test:workbench:git-hardening": "node test/workbench-git-hardening-unit.mjs",
+    "test:workbench:process-durable": "node test/workbench-process-durable-unit.mjs",
+    "test:workbench:image-handoff": "node test/workbench-image-handoff-unit.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0"
+  },
+  "files": [
+    "src",
+    "config",
+    "scripts",
+    "bin/codexzxm-doctor.cmd",
+    "bin/codexzxm-http.cmd",
+    "bin/codexzxm-install.cmd",
+    "bin/codexzxm-stdio.cmd",
+    "bin/codexzxm-uninstall.cmd",
+    "npm-shrinkwrap.json",
+    "README.md",
+    "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE",
+    "bin/codexzxm-install.sh",
+    "bin/codexzxm-doctor.sh",
+    "bin/codexzxm-http.sh",
+    "bin/codexzxm-stdio.sh",
+    "bin/codexzxm-uninstall.sh",
+    "platform",
+    "MAC_CODEX_BOOTSTRAP.md",
+    "README.zh-CN.md"
+  ]
+}
