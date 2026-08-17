@@ -25,7 +25,7 @@ const context = {
     if (title === "Read Workbench-created Chrome tab DOM") {
       assert.match(code, /tabs\.get\("agent-1"\)/);
       assert.doesNotMatch(code, /claimTab/);
-      return { isError: false, text: JSON.stringify({ title: "Existing", url: "https://example.com/", lastOpened: null, snapshot: "SESSION_REUSE_OK" }) };
+      return { isError: false, text: `ERROR noisy page log before protocol output\n__CODEXZXM_JSON__${JSON.stringify({ title: "Existing", url: "https://example.com/", lastOpened: null, snapshot: "SESSION_REUSE_OK" })}\ntrailing diagnostic` };
     }
     if (title === "Open Workbench Chrome tab") {
       mode = "opened";

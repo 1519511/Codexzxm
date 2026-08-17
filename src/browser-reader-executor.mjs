@@ -92,7 +92,7 @@ const __cxBrowser = await globalThis.__codexlessBrowserAgent.browsers.get("chrom
 const __cxTabs = await __cxBrowser.user.openTabs();
 const __cxSessionTabs = await __cxBrowser.tabs.list();
 const __cxSessionIds = new Set(__cxSessionTabs.map((tab) => tab.id));
-nodeRepl.write(JSON.stringify(__cxTabs.map((tab) => ({
+__cxJsonWrite(JSON.stringify(__cxTabs.map((tab) => ({
   providerTabId: tab.providerTabId,
   agentTabId: __cxSessionIds.has(tab.id) ? tab.id : null,
   title: tab.title ?? null,
@@ -178,7 +178,7 @@ if (!__cxTabs.some((tab) => tab.id === ${agentLiteral})) throw new Error("CODEXL
 const __cxTab = await __cxBrowser.tabs.get(${agentLiteral});
 const __cxSnapshot = await __cxTab.playwright.domSnapshot();
 await __cxTab.markHandoff();
-nodeRepl.write(JSON.stringify({
+__cxJsonWrite(JSON.stringify({
   title: await __cxTab.title(),
   url: await __cxTab.url(),
   lastOpened: new Date().toISOString(),
@@ -200,7 +200,7 @@ const __cxPayload = {
   lastOpened: __cxInfo.lastOpened ?? null,
   snapshot: __cxSnapshot,
 };
-nodeRepl.write(JSON.stringify(__cxPayload));
+__cxJsonWrite(JSON.stringify(__cxPayload));
 `, "Read existing Chrome tab DOM", { expectedGeneration: state.contextGeneration });
     }
 
@@ -247,7 +247,7 @@ await __cxTab.markHandoff();
 const __cxOpenTabs = await __cxBrowser.user.openTabs();
 const __cxInfo = __cxOpenTabs.find((tab) => tab.id === __cxTab.id);
 if (!__cxInfo?.providerTabId) throw new Error("CODEXLESS_BROWSER_PROVIDER_TAB_ID_MISSING");
-nodeRepl.write(JSON.stringify({
+__cxJsonWrite(JSON.stringify({
   providerTabId: __cxInfo.providerTabId,
   agentTabId: __cxTab.id,
   title: __cxInfo.title ?? await __cxTab.title(),
@@ -561,7 +561,7 @@ if (__cxInfo) {
   }
   __cxClosed = true;
 }
-nodeRepl.write(JSON.stringify({ closed: __cxClosed }));
+__cxJsonWrite(JSON.stringify({ closed: __cxClosed }));
 `, "Close Workbench-created Chrome tab", { expectedGeneration: state.contextGeneration });
     this.#providerToRef.delete(state.providerTabId);
     this.#tabs.delete(tabRef);
@@ -598,7 +598,7 @@ const __cxTab = await __cxBrowser.tabs.get(${agentLiteral});
 let __cxActionResult = null;
 ${actionBody}
 await __cxTab.markHandoff();
-nodeRepl.write(JSON.stringify({ actionResult: __cxActionResult, title: await __cxTab.title(), url: await __cxTab.url() }));
+__cxJsonWrite(JSON.stringify({ actionResult: __cxActionResult, title: await __cxTab.title(), url: await __cxTab.url() }));
 `;
     } else {
       const providerLiteral = JSON.stringify(state.providerTabId);
@@ -612,7 +612,7 @@ const __cxTab = await __cxBrowser.user.claimTab(__cxInfo);
 let __cxActionResult = null;
 ${actionBody}
 const __cxPayload = { actionResult: __cxActionResult, title: await __cxTab.title(), url: await __cxTab.url() };
-nodeRepl.write(JSON.stringify(__cxPayload));
+__cxJsonWrite(JSON.stringify(__cxPayload));
 `;
     }
     return this.#runJson(cwd, body, title, { expectedGeneration: state.contextGeneration });
@@ -708,7 +708,7 @@ nodeRepl.write(JSON.stringify(__cxPayload));
   async #listBackends(cwd) {
     const result = await this.#runJson(cwd, `
 const __cxBackends = await globalThis.__codexlessBrowserAgent.browsers.list();
-nodeRepl.write(JSON.stringify(__cxBackends.map((backend) => ({
+__cxJsonWrite(JSON.stringify(__cxBackends.map((backend) => ({
   name: backend.name ?? null,
   family: backend.family ?? null,
   type: backend.type ?? null,
@@ -729,7 +729,7 @@ if (globalThis.__codexlessBrowserAgent?.browsers == null) {
     try {
       response = await this.#context.nodeReplCall({
         cwd,
-        arguments: { code: `${bootstrap}\n{\n${body}\n}`, title },
+        arguments: { code: `${bootstrap}\n{\nconst __cxJsonWrite = (value) => nodeRepl.write("__CODEXZXM_JSON__" + value);\n${body}\n}`, title },
         meta: this.#nextTurnMeta(),
         expectedGeneration,
       });
@@ -756,6 +756,16 @@ if (globalThis.__codexlessBrowserAgent?.browsers == null) {
         "Browser runtime returned no text result",
         ["Call codex.browser_status and retry after confirming Chrome/node_repl health."]
       );
+    }
+    const marker = "__CODEXZXM_JSON__";
+    const markerIndex = text.lastIndexOf(marker);
+    if (markerIndex >= 0) {
+      const marked = text.slice(markerIndex + marker.length);
+      const firstLine = marked.split(/\r?\n/, 1)[0].trim();
+      if (firstLine) {
+        try { return JSON.parse(firstLine); }
+        catch {}
+      }
     }
     try {
       return JSON.parse(text);
