@@ -102,6 +102,20 @@ try {
   assert.equal(resized.cols, 132);
   await pty.stop({ ptyRef: session.ptyRef, force: true });
 
+  const shortCommand = process.platform === "win32"
+    ? [process.env.COMSPEC || "cmd.exe", "/d", "/c", "echo PTY_SHORT_OK"]
+    : [process.env.SHELL || "/bin/sh", "-c", "echo PTY_SHORT_OK"];
+  const shortSession = await pty.start({ command: shortCommand, cwd: fixture, cols: 80, rows: 20, label: "v61-pty-short" });
+  assert.equal(["running", "exited"].includes(shortSession.state), true);
+  let shortOutput = null;
+  for (let i = 0; i < 40; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    shortOutput = await pty.read({ ptyRef: shortSession.ptyRef, afterSeq: 0, maxChars: 50000 });
+    if (shortOutput.state === "exited" && shortOutput.events.some((event) => event.stream === "pty" && event.text.includes("PTY_SHORT_OK"))) break;
+  }
+  assert.equal(shortOutput?.state, "exited");
+  assert.equal(shortOutput?.events.some((event) => event.stream === "pty" && event.text.includes("PTY_SHORT_OK")), true);
+
   const browserCalls = [];
   let assistantReady = false;
   const mockBrowser = {
@@ -143,7 +157,15 @@ try {
       async status() { dispatchLog.push("pro:status"); return { bridgeRef: "probridge_00000000-0000-0000-0000-000000000001", status: "completed", answer: "deep plan" }; },
     },
   };
-  const workflow = new WorkbenchWorkflowEngine({ components, roots, stateDir: path.join(fixture, "workflow-state"), defaultCwd: fixture });
+  const stableWorkflow = new WorkbenchWorkflowEngine({ components, roots, stateDir: path.join(fixture, "workflow-stable-state"), defaultCwd: fixture });
+  assert.equal(stableWorkflow.stepTypes.includes("pro_reason"), false);
+  await assert.rejects(
+    stableWorkflow.prepare({ title: "stable-reject", rootAlias: "fixture", basePath: ".", steps: [{ id: "reason", type: "pro_reason", args: { prompt: "reason" } }] }),
+    /unsupported workflow step type: pro_reason/
+  );
+
+  const workflow = new WorkbenchWorkflowEngine({ components, roots, stateDir: path.join(fixture, "workflow-state"), defaultCwd: fixture, allowProReason: true });
+  assert.equal(workflow.stepTypes.includes("pro_reason"), true);
   const prepared = await workflow.prepare({
     title: "V61 flow", rootAlias: "fixture", basePath: ".",
     steps: [

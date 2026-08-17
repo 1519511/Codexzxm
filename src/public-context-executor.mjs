@@ -98,7 +98,7 @@ export class CodexPublicContextExecutor {
 
   async projectContext({ cwd = this.#defaultCwd } = {}) {
     const effectiveCwd = path.resolve(cwd);
-    const started = await this.#request("thread/start", { cwd: effectiveCwd, ephemeral: true });
+    const started = await this.#request("thread/start", { cwd: effectiveCwd, ephemeral: true }, { autoRecover: true });
     return {
       threadId: started?.thread?.id ?? null,
       cwd: started?.cwd ?? started?.thread?.cwd ?? effectiveCwd,
@@ -122,7 +122,7 @@ export class CodexPublicContextExecutor {
 
   async skillList({ cwd = this.#defaultCwd, query = "" } = {}) {
     const effectiveCwd = path.resolve(cwd);
-    const result = await this.#request("skills/list", { cwds: [effectiveCwd], forceReload: false });
+    const result = await this.#request("skills/list", { cwds: [effectiveCwd], forceReload: false }, { autoRecover: true });
     const skills = (result?.data ?? []).flatMap((row) => row?.skills ?? []);
     const needle = query.trim().toLowerCase();
     return {
@@ -136,7 +136,7 @@ export class CodexPublicContextExecutor {
 
   async skillRead({ name, cwd = this.#defaultCwd }) {
     const effectiveCwd = path.resolve(cwd);
-    const result = await this.#request("skills/list", { cwds: [effectiveCwd], forceReload: false });
+    const result = await this.#request("skills/list", { cwds: [effectiveCwd], forceReload: false }, { autoRecover: true });
     const skills = (result?.data ?? []).flatMap((row) => row?.skills ?? []);
     const exact = skills.find((skill) => skill.name === name);
     const matches = exact ? [exact] : skills.filter((skill) => skill.name.toLowerCase().includes(name.toLowerCase()));
@@ -147,7 +147,7 @@ export class CodexPublicContextExecutor {
       };
     }
     const skill = matches[0];
-    const read = await this.#request("fs/readFile", { path: skill.path });
+    const read = await this.#request("fs/readFile", { path: skill.path }, { autoRecover: true });
     return {
       status: "ok",
       name: skill.name,
@@ -159,14 +159,14 @@ export class CodexPublicContextExecutor {
 
   async browserPrerequisites({ cwd = this.#defaultCwd } = {}) {
     const effectiveCwd = path.resolve(cwd);
-    const skillsResult = await this.#request("skills/list", { cwds: [effectiveCwd], forceReload: false });
+    const skillsResult = await this.#request("skills/list", { cwds: [effectiveCwd], forceReload: false }, { autoRecover: true });
     const skills = (skillsResult?.data ?? []).flatMap((row) => row?.skills ?? []);
     const chromeSkill = skills.find((skill) => skill?.name === CHROME_SKILL_NAME && skill?.enabled !== false);
     if (!chromeSkill?.path) {
       return { status: "unavailable", reason: "chrome_skill_unavailable", chromeSkillPath: null, nodeRepl: false };
     }
 
-    const mcp = await this.#request("mcpServerStatus/list", { detail: "toolsAndAuthOnly", limit: 50 });
+    const mcp = await this.#request("mcpServerStatus/list", { detail: "toolsAndAuthOnly", limit: 50 }, { autoRecover: true });
     const nodeRepl = (mcp?.data ?? []).find((server) => server?.name === NODE_REPL_SERVER);
     const tools = nodeRepl?.tools && typeof nodeRepl.tools === "object" ? Object.values(nodeRepl.tools) : [];
     const js = tools.find((tool) => tool?.name === NODE_REPL_TOOL);
@@ -184,7 +184,7 @@ export class CodexPublicContextExecutor {
 
   async mcpServerStatusList({ limit = 200 } = {}) {
     const boundedLimit = Number.isInteger(limit) ? Math.min(500, Math.max(1, limit)) : 200;
-    const result = await this.#request("mcpServerStatus/list", { detail: "toolsAndAuthOnly", limit: boundedLimit }, { timeoutMs: 60_000 });
+    const result = await this.#request("mcpServerStatus/list", { detail: "toolsAndAuthOnly", limit: boundedLimit }, { timeoutMs: 60_000, autoRecover: true });
     return structuredClone(result ?? {});
   }
 
@@ -229,7 +229,7 @@ export class CodexPublicContextExecutor {
     }
   }
 
-  async #request(method, params, { expectedGeneration = null, ...options } = {}) {
+  async #request(method, params, { expectedGeneration = null, autoRecover = false, ...options } = {}) {
     await this.#ensureStarted();
     if (expectedGeneration !== null && expectedGeneration !== this.#generation) {
       throw new Error(
@@ -237,7 +237,13 @@ export class CodexPublicContextExecutor {
         "the Codex app-server restarted before this request was dispatched"
       );
     }
-    return this.#client.request(method, params, options);
+    try {
+      return await this.#client.request(method, params, options);
+    } catch (error) {
+      if (autoRecover !== true || expectedGeneration !== null || !isRecoverablePublicContextError(error)) throw error;
+      await this.recover({ reason: `auto-recover:${method}` });
+      return this.#client.request(method, params, options);
+    }
   }
 
   async #ensureThread(cwd, expectedGeneration = null) {
@@ -250,10 +256,18 @@ export class CodexPublicContextExecutor {
     }
     const existing = this.#threadsByCwd.get(cwd);
     if (existing) return existing;
-    const started = await this.#request("thread/start", { cwd, ephemeral: true }, { expectedGeneration });
+    const started = await this.#request("thread/start", { cwd, ephemeral: true }, {
+      expectedGeneration,
+      autoRecover: expectedGeneration === null,
+    });
     const threadId = started?.thread?.id;
     if (!threadId) throw new Error("thread/start returned no thread id for public runtime context");
     this.#threadsByCwd.set(cwd, threadId);
     return threadId;
   }
+}
+
+function isRecoverablePublicContextError(error) {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? "");
+  return /ExceptionGroup|TaskGroup|CodexRpcTimeoutError|timed out|codex app-server exited|closed before pending|Invalid Codex App Server JSON|EPIPE|ECONNRESET|broken pipe/i.test(message);
 }

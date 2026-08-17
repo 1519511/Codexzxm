@@ -14,7 +14,9 @@ import { createPublicServerFactory } from "./public-server-factory.mjs";
 import { createPrivateWorkbench } from "./workbench-tools.mjs";
 import {
   PRIVATE_WORKBENCH_SURFACE_VERSION,
+  EXPERIMENTAL_PRIVATE_WORKBENCH_SURFACE_VERSION,
   PRIVATE_WORKBENCH_TOOL_NAMES,
+  EXPERIMENTAL_PRO_BRIDGE_TOOL_NAMES,
   PUBLIC_SERVER_VERSION,
   PUBLIC_SURFACE_VERSION,
   PUBLIC_TOOL_NAMES,
@@ -48,6 +50,7 @@ export async function createPublicRuntime({ env = process.env } = {}) {
 
   const defaultCwd = productEnvString(env, "DEFAULT_CWD", process.cwd());
   const privateWorkbenchEnabled = productEnvString(env, "PRIVATE_WORKBENCH", "1") === "1";
+  const experimentalProBridgeEnabled = productEnvString(env, "EXPERIMENTAL_PRO_BRIDGE", "0") === "1";
   const privateMcpAllowedServers = productEnvString(env, "PRIVATE_MCP_ALLOWLIST", "*");
   const privateMcpAllowCodexApps = productEnvString(env, "PRIVATE_MCP_ALLOW_CODEX_APPS", "1") === "1";
   const privateWorkspaceStateDir = productEnvString(
@@ -141,6 +144,7 @@ export async function createPublicRuntime({ env = process.env } = {}) {
           processStateDir: privateProcessStateDir,
           mcpAllowedServers: privateMcpAllowedServers,
           mcpAllowCodexApps: privateMcpAllowCodexApps,
+          experimentalProBridge: experimentalProBridgeEnabled,
         })
       : null;
     const createServer = createPublicServerFactory({
@@ -174,11 +178,20 @@ export async function createPublicRuntime({ env = process.env } = {}) {
       createServer,
       close,
       version: PUBLIC_SERVER_VERSION,
-      surfaceVersion: privateWorkbenchEnabled ? PRIVATE_WORKBENCH_SURFACE_VERSION : PUBLIC_SURFACE_VERSION,
-      toolNames: privateWorkbenchEnabled ? Object.freeze([...PUBLIC_TOOL_NAMES, ...PRIVATE_WORKBENCH_TOOL_NAMES]) : PUBLIC_TOOL_NAMES,
+      surfaceVersion: privateWorkbenchEnabled
+        ? (experimentalProBridgeEnabled ? EXPERIMENTAL_PRIVATE_WORKBENCH_SURFACE_VERSION : PRIVATE_WORKBENCH_SURFACE_VERSION)
+        : PUBLIC_SURFACE_VERSION,
+      toolNames: privateWorkbenchEnabled
+        ? Object.freeze([
+            ...PUBLIC_TOOL_NAMES,
+            ...PRIVATE_WORKBENCH_TOOL_NAMES,
+            ...(experimentalProBridgeEnabled ? EXPERIMENTAL_PRO_BRIDGE_TOOL_NAMES : []),
+          ])
+        : PUBLIC_TOOL_NAMES,
       defaultCwd,
       meteredConsentMode,
       privateWorkbenchEnabled,
+      experimentalProBridgeEnabled,
       authorityValidation,
     };
   } catch (error) {

@@ -7,13 +7,24 @@ import { CodexAuthorityExecutor } from "../src/codex-authority-executor.mjs";
 import { acceptedCodexVersionsFromEnv, isCodexVersionAccepted } from "../src/codex-version-policy.mjs";
 import { probeCodexExecutable, redactHomePath, resolveCodexExecutable } from "../src/codex-bin.mjs";
 import { readJsonFile } from "../src/json-file.mjs";
-import { PUBLIC_SERVER_VERSION, PUBLIC_SURFACE_VERSION, PUBLIC_TOOL_NAMES } from "../src/surface-contracts.mjs";
+import {
+  APP_ONLY_PUBLIC_TOOL_NAMES,
+  EXPERIMENTAL_PRO_BRIDGE_TOOL_NAMES,
+  PRIVATE_WORKBENCH_SURFACE_VERSION,
+  PRIVATE_WORKBENCH_TOOL_NAMES,
+  PUBLIC_SERVER_VERSION,
+  PUBLIC_SURFACE_VERSION,
+  PUBLIC_TOOL_NAMES,
+} from "../src/surface-contracts.mjs";
 
 const require = createRequire(import.meta.url);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDir, "..");
 const packageJson = await readJsonFile(path.join(projectRoot, "package.json"), "package.json");
 const args = parseArgs(process.argv.slice(2));
+const experimentalProBridgeEnabled = process.env.CODEXZXM_EXPERIMENTAL_PRO_BRIDGE === "1" || process.env.CODEXLESS_EXPERIMENTAL_PRO_BRIDGE === "1";
+const stableRegisteredToolCount = PUBLIC_TOOL_NAMES.length + PRIVATE_WORKBENCH_TOOL_NAMES.length;
+const stableModelVisibleToolCount = stableRegisteredToolCount - APP_ONLY_PUBLIC_TOOL_NAMES.length;
 const acceptedCodexVersions = acceptedCodexVersionsFromEnv({ env: process.env });
 const profileOverride = process.env.CODEXZXM_PROFILE?.trim() || process.env.CODEXLESS_PROFILE?.trim() || null;
 const requestedCwd = args.cwd ? path.resolve(args.cwd) : null;
@@ -41,8 +52,13 @@ record(
 const nodeMajor = Number.parseInt(process.versions.node.split(".")[0], 10);
 record("node", Number.isInteger(nodeMajor) && nodeMajor >= 22, `Node ${process.version}`, nodeMajor >= 22 ? null : "Node.js 22+ is required");
 record("public-surface", PUBLIC_TOOL_NAMES.length === 21, `${PUBLIC_SURFACE_VERSION}; ${PUBLIC_TOOL_NAMES.length} tools`);
+record(
+  "stable-surface",
+  stableRegisteredToolCount === 121 && PRIVATE_WORKBENCH_TOOL_NAMES.length === 100 && APP_ONLY_PUBLIC_TOOL_NAMES.length === 3,
+  `${PRIVATE_WORKBENCH_SURFACE_VERSION}; registered=${stableRegisteredToolCount}; model-visible=${stableModelVisibleToolCount}; app-only=${APP_ONLY_PUBLIC_TOOL_NAMES.length}`
+);
 
-for (const spec of ["@modelcontextprotocol/node", "@modelcontextprotocol/server", "zod"]) {
+for (const spec of ["@modelcontextprotocol/node", "@modelcontextprotocol/server", "node-pty", "zod"]) {
   try {
     const resolved = require.resolve(spec);
     const local = isWithin(projectRoot, resolved) && resolved.toLowerCase().includes(`${path.sep}node_modules${path.sep}`.toLowerCase());
@@ -155,14 +171,15 @@ if (codexResolution?.path && codexProbe?.ok) {
   }
 }
 
-notes.push("Browser Reader is conditional; unavailable Browser/Node REPL prerequisites do not make the Codexless core install invalid.");
+notes.push("Browser Reader and Computer Use are optional UI capabilities; their failure must not make the Stable Core invalid.");
+notes.push("Pro Web Bridge is disabled by default in Codexzxm Stable. Set CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1 only for explicit experimental use.");
 notes.push("Permission fields have different meanings: permissionCeiling is the locally authorized maximum for an operation, while permissionProfile is the profile actually used. Read-only operations downscope; explicit write operations may inherit the local Codex ceiling. Remote callers cannot select a stronger profile.");
 notes.push("codex.project_context reports a fresh Codex bootstrap projection for its cwd; per-operation authority is resolved separately. Doctor --cwd uses the same Codexless authority resolver as project execution rather than treating the bootstrap projection as a global permission result.");
 notes.push("Tunnel connectivity is intentionally not changed or provisioned by doctor. Verify the release-candidate tunnel separately after local install/doctor passes.");
 notes.push("Doctor does not start a Codex model turn.");
 
 const failedCoreChecks = checks.filter((check) => check.required && !check.ok);
-const status = failedCoreChecks.length ? "error" : warnings.length || (requestedCwd && !projectContext?.ok) ? "partial" : "ok";
+const status = failedCoreChecks.length ? "error" : (requestedCwd && !projectContext?.ok) ? "partial" : "ok";
 const result = {
   status,
   codexless: {
@@ -185,8 +202,18 @@ const result = {
   },
   project: requestedCwd ? projectContext ?? { ok: false, error: "project context was not checked" } : { status: "not_requested" },
   capabilities: {
+    stableSurface: {
+      status: stableRegisteredToolCount === 121 ? "available" : "invalid",
+      registeredTools: stableRegisteredToolCount,
+      modelVisibleTools: stableModelVisibleToolCount,
+      appOnlyTools: APP_ONLY_PUBLIC_TOOL_NAMES.length,
+      privateWorkbenchTools: PRIVATE_WORKBENCH_TOOL_NAMES.length,
+    },
     browserReader: browser,
     nodeRepl,
+    proBridge: experimentalProBridgeEnabled
+      ? { status: "experimental_enabled", toolCount: EXPERIMENTAL_PRO_BRIDGE_TOOL_NAMES.length }
+      : { status: "disabled", reason: "disabled_by_default_for_stability", toolCount: 0 },
     tunnel: { status: "not_checked", reason: "separate_release_boundary" },
   },
   checks,
@@ -271,8 +298,10 @@ function dedupeWarnings(rows) {
 
 function printHuman(result) {
   const mark = (ok) => ok ? "PASS" : "FAIL";
-  process.stdout.write(`Codexless doctor: ${result.status.toUpperCase()}\n`);
-  process.stdout.write(`Version ${result.codexless.packageVersion} | ${result.codexless.surfaceVersion} | ${result.codexless.publicToolCount} public tools\n\n`);
+  process.stdout.write(`Codexzxm Stable doctor: ${result.status.toUpperCase()}\n`);
+  process.stdout.write(`Version ${result.codexless.packageVersion} | ${PRIVATE_WORKBENCH_SURFACE_VERSION}\n`);
+  process.stdout.write(`Stable surface: ${result.capabilities.stableSurface.registeredTools} registered | ${result.capabilities.stableSurface.modelVisibleTools} model-visible | ${result.capabilities.stableSurface.appOnlyTools} app-only\n`);
+  process.stdout.write(`Pro Bridge: ${result.capabilities.proBridge.status}\n\n`);
   for (const check of result.checks) {
     process.stdout.write(`[${mark(check.ok)}] ${check.name}: ${check.detail}\n`);
     if (!check.ok && check.action) process.stdout.write(`       -> ${check.action}\n`);

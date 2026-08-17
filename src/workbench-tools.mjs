@@ -11,7 +11,7 @@ import { WorkbenchPtyManager } from "./workbench-pty.mjs";
 import { WorkbenchRootRegistry } from "./workbench-root-registry.mjs";
 import { WorkbenchSecretBroker } from "./workbench-secret-broker.mjs";
 import { WorkbenchProBridge } from "./workbench-pro-bridge.mjs";
-import { WorkbenchWorkflowEngine, WORKFLOW_STEP_TYPES } from "./workbench-workflow.mjs";
+import { WorkbenchWorkflowEngine } from "./workbench-workflow.mjs";
 import { WorkbenchWorkspaceManager } from "./workbench-workspaces.mjs";
 
 const require = createRequire(import.meta.url);
@@ -26,6 +26,7 @@ export function createPrivateWorkbench({
   processStateDir = null,
   mcpAllowedServers = null,
   mcpAllowCodexApps = false,
+  experimentalProBridge = false,
 } = {}) {
   const fsGit = new WorkbenchFsGit({ authorityExecutor });
   const imageHandoff = new WorkbenchImageHandoff({ authorityExecutor });
@@ -34,7 +35,9 @@ export function createPrivateWorkbench({
   const roots = defaultCwd ? new WorkbenchRootRegistry({ authorityExecutor, stateDir: path.join(stateRoot, "roots-v1"), defaultCwd }) : null;
   const secrets = new WorkbenchSecretBroker({ stateDir: path.join(stateRoot, "secrets-v1") });
   const pty = new WorkbenchPtyManager({ authorityExecutor, stateDir: path.join(stateRoot, "pty-v1") });
-  const proBridge = browserReader && defaultCwd ? new WorkbenchProBridge({ browser: browserReader, stateDir: path.join(stateRoot, "pro-bridge-v1"), defaultCwd }) : null;
+  const proBridge = experimentalProBridge === true && browserReader && defaultCwd
+    ? new WorkbenchProBridge({ browser: browserReader, stateDir: path.join(stateRoot, "pro-bridge-v1"), defaultCwd })
+    : null;
   const mcpHub = publicContext
     ? new WorkbenchMcpHub({ context: publicContext, allowedServers: mcpAllowedServers ?? undefined, allowCodexApps: mcpAllowCodexApps })
     : null;
@@ -45,7 +48,9 @@ export function createPrivateWorkbench({
     ? new WorkbenchWorkspaceManager({ authorityExecutor, processManager: processes, stateDir: workspaceStateDir, defaultCwd })
     : null;
   const workflowComponents = { fsGit, processes, pty, browser: browserReader, mcpHub, proBridge };
-  const workflow = roots && defaultCwd ? new WorkbenchWorkflowEngine({ components: workflowComponents, roots, stateDir: path.join(stateRoot, "workflows-v1"), defaultCwd }) : null;
+  const workflow = roots && defaultCwd
+    ? new WorkbenchWorkflowEngine({ components: workflowComponents, roots, stateDir: path.join(stateRoot, "workflows-v1"), defaultCwd, allowProReason: experimentalProBridge === true })
+    : null;
   const executionManifest = roots && workflow ? new WorkbenchExecutionManifest({ roots, workflow, stateDir: path.join(stateRoot, "execution-manifests-v1") }) : null;
   return {
     fsGit,
@@ -650,7 +655,7 @@ export function registerPrivateWorkbenchTools(server, workbench) {
   if (workbench.workflow) {
     const workflowSteps = z.array(z.object({
       id: z.string().min(1).max(64).optional(),
-      type: z.enum(WORKFLOW_STEP_TYPES),
+      type: z.enum(workbench.workflow.stepTypes),
       args: z.record(z.string(), z.unknown()).default({}),
     }).strict()).min(1).max(50);
     register(server, "workbench.workflow_prepare", {

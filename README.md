@@ -2,13 +2,14 @@
 
 Codexzxm is a private local execution plane that lets ChatGPT use authority-bounded tools on the user's own Windows or Apple Silicon macOS machine through MCP. It is derived from the Apache-2.0 licensed Codexless project. Local model-free execution, ChatGPT Web subscription reasoning, and optional Codex Agent escalation are separate lanes.
 
-Current package: `0.7.4-preview.0`
-Private surface: `codexzxm-private-v6.1`
-Exact tool contract: **124 MCP tools** = 21 compatibility tools + 94 private Workbench tools.
+Current package: `0.8.0-preview.0`
+Default private surface: `codexzxm-stable-v1`
+Stable tool contract: **121 registered MCP tools** = 21 compatibility tools + 100 private Workbench tools = 118 model-visible tools + 3 app-only task-card tools.
+Experimental Pro Bridge can be explicitly enabled with `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1`, restoring the 3 bridge tools for **124 registered tools** under the experimental surface.
 
-## V6.1 design
+## Stable design
 
-V6.1 is built around permanent local authority. It deliberately has no temporary permission lease system. A permanent root alias may be registered only when the local Codex authority resolver already proves that root is explicitly trusted and currently resolves to `:danger-full-access`. Codexzxm can remember and reuse that authority, but cannot grant itself a new trusted root.
+Codexzxm Stable is built around permanent local authority. It deliberately has no temporary permission lease system. A permanent root alias may be registered only when the local Codex authority resolver already proves that root is explicitly trusted and currently resolves to `:danger-full-access`. Codexzxm can remember and reuse that authority, but cannot grant itself a new trusted root.
 
 Key layers:
 
@@ -24,7 +25,7 @@ Key layers:
 - Persistent workspaces: tasks, logs, changed files, snapshots and guarded restore.
 - Workflow Engine: checkpointed multi-step execution; completed mutations are persisted immediately and are not silently replayed after failure or restart.
 - Pro Execution Manifest: `codexzxm-pro-execution-manifest-v1`, rooted in permanent aliases instead of machine-specific paths.
-- Pro Web Bridge: route a reasoning task to a dedicated logged-in `chatgpt.com` tab using a visibly available subscription thinking level such as `Pro`, then poll the original task and return the resulting answer. It uses the user's ChatGPT Web subscription, not an OpenAI API route, and it does not start a Codex model turn.
+- Experimental Pro Web Bridge: disabled by default in Stable. When explicitly enabled, it can route a reasoning task to a dedicated logged-in `chatgpt.com` tab using a visibly available subscription thinking level such as `Pro`. It remains experimental because `chatgpt.com` Browser/node_repl behavior can time out independently of the Stable Core.
 - ChatGPT image handoff: package local text/reference images for the current conversation's built-in image generation path.
 - Optional Codex Agent escalation remains separate and is never the default model-free path.
 
@@ -72,34 +73,21 @@ MCP can list only metadata such as `secretRef=github-main`. For execution, pass 
 
 The persisted process/PTY state stores the reference name, not the plaintext secret.
 
-## ChatGPT Pro Web Bridge
+## Experimental ChatGPT Pro Web Bridge
 
-The bridge solves a product-surface mismatch without using an API gateway. A tool-capable ChatGPT turn invokes Codexzxm; Codexzxm then uses the already logged-in Chrome ChatGPT Web session to create a dedicated reasoning task, verifies the visible thinking-level UI, sends exactly once, and later polls that same task.
+The Pro Web Bridge is **disabled by default** in Codexzxm Stable because real `chatgpt.com` Browser/node_repl sessions can time out independently of the Stable Core. The bridge source remains available for explicit experiments and still uses the logged-in ChatGPT Web subscription rather than an OpenAI API route.
+
+Enable it only when deliberately testing the experimental lane:
 
 ```text
-ChatGPT tool-capable turn
-        |
-        v
-Codexzxm pro_bridge_start(thinking="Pro")
-        |
-        v
-Dedicated logged-in ChatGPT Web tab
-        |
-        v
-Subscription Pro reasoning
-        |
-        v
-pro_bridge_status -> answer
-        |
-        v
-Codexzxm Workflow / Execution Manifest
+CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1
 ```
 
-The bridge fails visibly when the requested thinking level is not shown, when the account is not signed in, or when a browser mutation has an uncertain outcome. It does not silently downgrade the requested level and does not automatically replay an uncertain send.
+When enabled, the three `workbench.pro_bridge_*` tools are added back and the registered surface rises from 121 to 124 tools. The bridge must fail visibly on unsupported UI/auth states and must never automatically replay an uncertain send.
 
 ## Workflow and execution manifests
 
-A workflow has 1-50 typed steps and a permanent root alias. Supported steps cover core filesystem writes, process/PTY starts, Git mutations, browser operations, MCP calls, and `pro_reason`.
+A Stable workflow has 1-50 typed steps and a permanent root alias. Supported default steps cover core filesystem writes, process/PTY starts, Git mutations, browser operations, and MCP calls. `pro_reason` is **not** part of the Stable step contract.
 
 Step results can be referenced by later steps:
 
@@ -107,7 +95,7 @@ Step results can be referenced by later steps:
 ${steps.step_id.field.path}
 ```
 
-`pro_reason` is asynchronous: the workflow enters `waiting`; the next `workflow_run` polls the original Pro Bridge task and continues only after it completes.
+When `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` is explicitly enabled, `pro_reason` is added to the workflow step types and may wait/poll the original Pro Bridge task. Stable workflows never depend on it.
 
 The execution manifest protocol records assumptions, verification goals, rollback metadata, root alias and workflow steps. It explicitly reports:
 

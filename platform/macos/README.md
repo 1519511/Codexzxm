@@ -1,6 +1,6 @@
 # Codexzxm on Apple Silicon macOS
 
-Codexzxm 0.7.4-preview.0 exposes the same **124-tool** private V6.1 contract on Apple Silicon macOS. The Mac is a separate execution host and must use its own Secure MCP Tunnel alias/name.
+Codexzxm 0.8.0-preview.0 uses the same Stable contract on Apple Silicon macOS: **121 registered tools** by default (`codexzxm-stable-v1`). The experimental Pro Bridge is disabled by default; explicitly enabling `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` restores 3 tools for 124 registered tools. The Mac is a separate execution host and must use its own Secure MCP Tunnel alias/name.
 
 ## Install
 
@@ -41,11 +41,11 @@ Create permanent secrets locally with:
 
 The value is stored in macOS Keychain. MCP exposes metadata only. Process/PTY `secretEnv` can inject a `secretRef` into a child environment without persisting plaintext.
 
-## Browser and Pro Web Bridge
+## Browser and experimental Pro Web Bridge
 
-When the local Codex Chrome backend is available, V6.1 provides browser navigation, semantic actions, DOM query, file upload/download, JS dialog handling, screenshots/logs, and the Pro Web Bridge.
+When the local Codex Chrome backend is available, Stable provides browser navigation, semantic actions, DOM query, file upload/download, JS dialog handling, screenshots and logs. Browser/Computer Use remain optional UI capabilities and must not determine Stable Core health.
 
-The Pro Web Bridge opens a dedicated already-authenticated `chatgpt.com` tab, verifies the visibly available subscription thinking level (for example `Pro`), submits once, and later polls the same task. It does not use an OpenAI API gateway and does not start a Codex model turn.
+The Pro Web Bridge is disabled by default. Only explicit experimental use with `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` adds the three bridge tools and `pro_reason`. It still uses the logged-in ChatGPT Web subscription rather than an OpenAI API gateway, but it is not part of the Stable acceptance criteria.
 
 Browser/Computer Use availability remains dependent on the actual Mac Codex/Chrome desktop backend. Do not claim live Mac Computer Use support until the installed Mac has passed its own backend probe.
 

@@ -69,15 +69,21 @@ for (const key of Object.keys(resolvedSecrets.env)) resolvedSecrets.env[key] = "
 status.pid = terminal.pid ?? null;
 status.state = "running";
 status.runnerHeartbeatAt = new Date().toISOString();
+
+// Attach PTY event handlers immediately after spawn so ultra-short commands cannot
+// emit output or exit before the runner starts observing them.
+terminal.onData((data) => void pushEvent("pty", data));
+terminal.onExit(({ exitCode, signal }) => void finish(exitCode, signal));
+
 await pushEvent("system", `PTY started pid=${String(status.pid)} runnerPid=${process.pid}\n`);
 await persistStatus();
 
-terminal.onData((data) => void pushEvent("pty", data));
-terminal.onExit(({ exitCode, signal }) => void finish(exitCode, signal));
-controlTimer = setInterval(() => void pollControl(), CONTROL_POLL_MS);
-controlTimer.unref?.();
-heartbeatTimer = setInterval(() => void heartbeat(), 2000);
-heartbeatTimer.unref?.();
+if (!["exited", "failed"].includes(status.state)) {
+  controlTimer = setInterval(() => void pollControl(), CONTROL_POLL_MS);
+  controlTimer.unref?.();
+  heartbeatTimer = setInterval(() => void heartbeat(), 2000);
+  heartbeatTimer.unref?.();
+}
 process.on("SIGTERM", () => void requestStop(true, "runner-sigterm"));
 process.on("SIGINT", () => void requestStop(true, "runner-sigint"));
 process.on("uncaughtException", (error) => void fail(`PTY runner uncaught exception: ${error.stack ?? error.message}`));

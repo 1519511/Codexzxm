@@ -2,13 +2,14 @@
 
 Codexzxm 是一个私有本地执行控制面，让 ChatGPT 通过 MCP 使用你自己 Windows 或 Apple Silicon Mac 上、受 Codex 本地权限约束的工具。项目基于 Apache-2.0 的 Codexless 演化而来。本地 model-free 执行、ChatGPT Web 订阅推理、以及可选的 Codex Agent 调用是三条独立通道。
 
-当前版本：`0.7.4-preview.0`
-私有 Surface：`codexzxm-private-v6.1`
-精确工具合同：**124 个 MCP 工具** = 21 个兼容工具 + 103 个私有 Workbench 工具。
+当前版本：`0.8.0-preview.0`
+默认私有 Surface：`codexzxm-stable-v1`
+Stable 工具合同：**121 个已注册 MCP 工具** = 21 个兼容工具 + 100 个私有 Workbench 工具 = 118 个模型可见工具 + 3 个仅供 App 任务卡使用的工具。
+只有显式设置 `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` 时，才会恢复 3 个 Pro Bridge 工具，实验 Surface 共 **124 个已注册工具**。
 
-## V6.1 的核心设计
+## Stable 核心设计
 
-V6.1 按永久本地权限设计，**没有临时权限租约**。永久 Root alias 只有在本机 Codex 已经明确授权、且实时解析为 `:danger-full-access` 时才能注册。Codexzxm 可以永久记住并重复使用这个已存在的授权，但不能远程给自己新增 trust，也不能绕开 Codex 的权限上限。
+Codexzxm Stable 按永久本地权限设计，**没有临时权限租约**。永久 Root alias 只有在本机 Codex 已经明确授权、且实时解析为 `:danger-full-access` 时才能注册。Codexzxm 可以永久记住并重复使用这个已存在的授权，但不能远程给自己新增 trust，也不能绕开 Codex 的权限上限。
 
 主要能力包括：
 
@@ -24,7 +25,7 @@ V6.1 按永久本地权限设计，**没有临时权限租约**。永久 Root al
 - Persistent Workspace：任务、日志、changed files、快照与受保护恢复。
 - Workflow Engine：多步骤持久工作流；每个成功副作用立即 checkpoint，失败或服务重启后不会偷偷重放已完成操作。
 - Pro Execution Manifest：`codexzxm-pro-execution-manifest-v1`，优先引用永久 root alias，而不在高层计划里写死机器绝对路径。
-- Pro Web Bridge：通过已经登录的 `chatgpt.com` 独立标签页，把推理任务送到页面上真实可见的订阅思考等级（默认 `Pro`），再轮询原任务拿回答案。**不走 OpenAI API，也不启动 Codex 模型回合。**
+- 实验性 Pro Web Bridge：Stable 默认关闭。显式启用后才通过已登录的 `chatgpt.com` 标签页尝试订阅内推理；该通道不走 OpenAI API，也不启动 Codex 模型回合，但不属于 Stable Core。
 - ChatGPT Image Handoff：把本地文字与参考图交给当前 ChatGPT 会话的内置图像生成路径。
 - Codex Agent 仍保留为可选升级通道，不属于默认 model-free 执行路径。
 
@@ -72,34 +73,19 @@ macOS：
 
 持久化的 Process/PTY 状态只保存引用名，不保存 Secret 明文。
 
-## Pro Web Bridge
+## 实验性 Pro Web Bridge
 
-这一层专门解决“高推理 Pro 与插件/工具执行面分离”的问题，而且不需要 API Gateway。
+Pro Web Bridge 在 Codexzxm Stable 中**默认关闭**。原因是实际 `chatgpt.com` 页面上的 Browser/node_repl 运行可能独立超时，而 Stable Core 不应依赖这一层。源码仍然保留，只有明确测试时才开启：
 
 ```text
-支持工具的 ChatGPT 回合
-        |
-        v
-Codexzxm pro_bridge_start(thinking="Pro")
-        |
-        v
-已登录 ChatGPT Web 的独立任务页
-        |
-        v
-订阅内 Pro 推理
-        |
-        v
-pro_bridge_status 拿回答案
-        |
-        v
-Codexzxm Workflow / Execution Manifest 执行
+CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1
 ```
 
-Bridge 每次都验证当前页面真实可见的思考等级、Composer 和发送按钮。请求的 `Pro` 不可见时会明确失败，不会偷偷降级；浏览器 mutation 出现 uncertain outcome 时也不会自动重发，避免同一任务提交两次。
+开启后会恢复 3 个 `workbench.pro_bridge_*` 工具，已注册工具数从 121 回到 124。该实验通道仍然使用已登录的 ChatGPT Web 订阅，不走 OpenAI API；任何发送结果不确定的情况都不得自动重发。
 
 ## Workflow 与 Execution Manifest
 
-Workflow 支持 1–50 个 typed steps，统一挂在永久 root alias 下。目前覆盖核心文件写操作、Process/PTY、Git、Browser、MCP Call 和 `pro_reason`。
+Stable Workflow 支持 1–50 个 typed steps，统一挂在永久 root alias 下。默认覆盖核心文件操作、Process/PTY、Git、Browser 和 MCP Call；**Stable 默认不包含 `pro_reason`**。
 
 后续步骤可以引用前面步骤的结果：
 
@@ -107,7 +93,7 @@ Workflow 支持 1–50 个 typed steps，统一挂在永久 root alias 下。目
 ${steps.step_id.field.path}
 ```
 
-`pro_reason` 是异步步骤。发送后 Workflow 进入 `waiting`，下一次 `workflow_run` 只轮询原 Pro Bridge 任务；完成以后继续后续执行。
+只有显式设置 `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` 后，Workflow 才会加入 `pro_reason`，并允许等待/轮询原 Pro Bridge 任务。Stable 工作流不依赖它。
 
 Execution Manifest 协议会保存 assumptions、verification、rollback metadata、rootAlias 和 steps，并显式返回：
 

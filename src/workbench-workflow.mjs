@@ -8,12 +8,12 @@ export const WORKFLOW_STEP_TYPES = Object.freeze([
   "process_start", "pty_start",
   "git_stage", "git_commit_staged", "git_fetch", "git_pull", "git_push",
   "browser_open", "browser_navigate", "browser_back", "browser_forward", "browser_dialog", "browser_click", "browser_fill", "browser_upload", "browser_download",
-  "mcp_call", "pro_reason",
+  "mcp_call",
 ]);
-const STEP_TYPE_SET = new Set(WORKFLOW_STEP_TYPES);
+export const EXPERIMENTAL_WORKFLOW_STEP_TYPES = Object.freeze(["pro_reason"]);
 
 export class WorkbenchWorkflowEngine {
-  constructor({ components, roots, stateDir = null, defaultCwd }) {
+  constructor({ components, roots, stateDir = null, defaultCwd, allowProReason = false }) {
     if (!components || typeof components !== "object") throw new Error("WorkbenchWorkflowEngine requires components");
     if (!roots) throw new Error("WorkbenchWorkflowEngine requires permanent root registry");
     if (!defaultCwd) throw new Error("WorkbenchWorkflowEngine requires defaultCwd");
@@ -21,6 +21,12 @@ export class WorkbenchWorkflowEngine {
     this.roots = roots;
     this.defaultCwd = path.resolve(defaultCwd);
     this.stateDir = path.resolve(stateDir ?? path.join(os.homedir(), ".config", "codexzxm", "workflows-v1"));
+    this.allowProReason = allowProReason === true;
+    this.stepTypes = Object.freeze([
+      ...WORKFLOW_STEP_TYPES,
+      ...(this.allowProReason ? EXPERIMENTAL_WORKFLOW_STEP_TYPES : []),
+    ]);
+    this.stepTypeSet = new Set(this.stepTypes);
   }
 
   validateDefinition({ rootAlias, basePath = ".", steps }) {
@@ -35,7 +41,7 @@ export class WorkbenchWorkflowEngine {
       if (ids.has(id)) throw workflowError("WORKFLOW_STEP_ID_DUPLICATE", `duplicate step id: ${id}`);
       ids.add(id);
       const type = typeof raw.type === "string" ? raw.type.trim() : "";
-      if (!STEP_TYPE_SET.has(type)) throw workflowError("WORKFLOW_STEP_TYPE_INVALID", `unsupported workflow step type: ${type}`);
+      if (!this.stepTypeSet.has(type)) throw workflowError("WORKFLOW_STEP_TYPE_INVALID", `unsupported workflow step type: ${type}`);
       const args = raw.args && typeof raw.args === "object" && !Array.isArray(raw.args) ? structuredClone(raw.args) : {};
       return { id, type, args, status: "pending", result: null, error: null, startedAt: null, completedAt: null };
     });

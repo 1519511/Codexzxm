@@ -1,4 +1,4 @@
-export const PUBLIC_SERVER_VERSION = "0.7.4-preview.0";
+export const PUBLIC_SERVER_VERSION = "0.8.0-preview.0";
 export const PUBLIC_SURFACE_VERSION = "codexzxm-compat-v1";
 
 export const PUBLIC_TOOL_NAMES = Object.freeze([
@@ -25,7 +25,20 @@ export const PUBLIC_TOOL_NAMES = Object.freeze([
   "codex.agent_cancel",
 ]);
 
-export const PRIVATE_WORKBENCH_SURFACE_VERSION = "codexzxm-private-v6.1";
+export const PRIVATE_WORKBENCH_SURFACE_VERSION = "codexzxm-stable-v1";
+export const EXPERIMENTAL_PRIVATE_WORKBENCH_SURFACE_VERSION = "codexzxm-experimental-v1";
+
+export const APP_ONLY_PUBLIC_TOOL_NAMES = Object.freeze([
+  "codex.agent_card_state",
+  "codex.agent_decline",
+  "codex.agent_commit",
+]);
+
+export const EXPERIMENTAL_PRO_BRIDGE_TOOL_NAMES = Object.freeze([
+  "workbench.pro_bridge_start",
+  "workbench.pro_bridge_status",
+  "workbench.pro_bridge_close",
+]);
 
 export const PRIVATE_WORKBENCH_TOOL_NAMES = Object.freeze([
   "workbench.root_register",
@@ -94,9 +107,6 @@ export const PRIVATE_WORKBENCH_TOOL_NAMES = Object.freeze([
   "workbench.browser_upload",
   "workbench.browser_download",
   "workbench.browser_close",
-  "workbench.pro_bridge_start",
-  "workbench.pro_bridge_status",
-  "workbench.pro_bridge_close",
   "workbench.workflow_prepare",
   "workbench.workflow_run",
   "workbench.workflow_status",

@@ -68,9 +68,13 @@ export class WorkbenchPtyManager {
     });
     runner.unref();
     const status = await waitForStatus(sessionDir, (row) => ["running", "failed", "exited"].includes(row?.state), START_TIMEOUT_MS);
-    if (!status) throw new Error(`PTY runner did not become ready within ${START_TIMEOUT_MS}ms: ${ptyRef}`);
-    if (status.state !== "running") throw new Error(`PTY start failed: state=${status.state}`);
-    return summary(status, { durable: true, reattachable: true });
+    if (!status) throw new Error(`PTY runner did not reach a terminal startup state within ${START_TIMEOUT_MS}ms: ${ptyRef}`);
+    if (status.state === "failed") throw new Error(`PTY start failed: state=${status.state}`);
+    return summary(status, {
+      durable: true,
+      reattachable: status.state === "running",
+      startupSettled: true,
+    });
   }
 
   async list() {
