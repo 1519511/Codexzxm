@@ -2,7 +2,7 @@
 
 Codexzxm 是一个私有本地执行控制面，让 ChatGPT 通过 MCP 使用你自己 Windows 或 Apple Silicon Mac 上、受 Codex 本地权限约束的工具。项目基于 Apache-2.0 的 Codexless 演化而来。本地 model-free 执行、ChatGPT Web 订阅推理、以及可选的 Codex Agent 调用是三条独立通道。
 
-当前版本：`0.8.2-preview.0`
+当前版本：`0.8.3-preview.0`
 默认私有 Surface：`codexzxm-stable-v1`
 Stable 工具合同：**121 个已注册 MCP 工具** = 21 个兼容工具 + 100 个私有 Workbench 工具 = 118 个模型可见工具 + 3 个仅供 App 任务卡使用的工具。
 只有显式设置 `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` 时，才会恢复 3 个 Pro Bridge 工具，实验 Surface 共 **124 个已注册工具**。
@@ -119,6 +119,25 @@ apiRouteUsed = false
 Tunnel、自启动和凭据配置放在 `%USERPROFILE%\.config\codexzxm`。Secure MCP Tunnel 使用的 ordinary runtime API key 由 Windows DPAPI 保存，因此 staged upgrade 不会再把凭据一起删除。
 
 Windows 的 Startup 启动器通过 `%LOCALAPPDATA%` 动态解析 supervisor，不再把用户目录绝对路径直接写进 ASCII VBS，因此中文等非 ASCII 用户名不会被替换成 `???`。常驻 supervisor 会把 PID、更新时间和 runtime ready 状态写入 `%USERPROFILE%\.config\codexzxm\supervisor\heartbeat.json`；网络/代理中断导致 MCP 子进程或 tunnel-client 退出后，会持续自动拉起 managed runtime。自启动配置如果无法验证一个真实存活的 supervisor 心跳，会明确失败，不再打印假成功。
+
+### HeyGen 本地素材临时 HTTPS 桥（Windows）
+
+HeyGen 生成接口接受公网 HTTPS URL 或 HeyGen asset ID，但当前 HeyGen MCP 没有暴露 Upload Asset 工具。Windows 安装版因此提供“本地文件 → 临时 HTTPS URL”桥接脚本，用来绕开不稳定的网页上传自动化：
+
+```powershell
+& "$env:LOCALAPPDATA\Codexzxm\scripts\codexzxm-heygen-share.ps1" `
+  -Action Start `
+  -Path "C:\path\image.png","C:\path\audio.m4a" `
+  -LeaseMinutes 30
+```
+
+本地文件服务只监听 `127.0.0.1`，不开放目录列表，每个素材使用随机不可猜路径，支持媒体下载常用的 HTTP Range；脚本复用 `tunnel-client` 同目录的 `cloudflared.exe` 创建临时 `trycloudflare.com` HTTPS 地址。任何拿到完整素材 URL 的人都能在有效期内获取该文件，因此应使用尽可能短的 lease，并在 HeyGen 已完成素材拉取后立即停止：
+
+```powershell
+& "$env:LOCALAPPDATA\Codexzxm\scripts\codexzxm-heygen-share.ps1" -Action Stop
+```
+
+当 HeyGen 这类重网页导致 Browser/node_repl 超时，或 Computer Use 无法安全判定当前浏览器 URL 时，这条桥接路径是首选兜底；它不会放宽或绕过 Computer Use 的浏览器安全策略。
 
 ## Apple Silicon Mac 安装
 

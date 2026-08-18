@@ -1,6 +1,6 @@
 # Install Codexzxm with Codex
 
-Target release: `v0.8.2-preview.0`
+Target release: `v0.8.3-preview.0`
 Repository: `https://github.com/1519511/Codexzxm`
 
 Use this file when a user gives the Codexzxm repository URL to Codex and asks for installation on their own machine.
@@ -16,7 +16,7 @@ Install and validate Codexzxm locally without copying credentials, tunnel identi
 - Do not copy another user's `%USERPROFILE%\.config\codexzxm`, DPAPI files, macOS Keychain entries, `.workbench`, tunnel profiles, root registry, browser profile, cookies, or login state.
 - Do not grant new filesystem authority on behalf of the user. Codexzxm may only reuse authority that local Codex already resolves for that machine.
 - Stable default is 121 registered MCP tools. Do not enable `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` during a normal installation.
-- Prefer the tagged release `v0.8.2-preview.0` rather than an arbitrary development commit.
+- Prefer the tagged release `v0.8.3-preview.0` rather than an arbitrary development commit.
 
 ## 1. Inspect the machine
 
@@ -42,7 +42,7 @@ If a prerequisite is missing, report exactly what is missing before changing unr
 ## 2. Clone the public release
 
 ```text
-git clone --branch v0.8.2-preview.0 --depth 1 https://github.com/1519511/Codexzxm.git
+git clone --branch v0.8.3-preview.0 --depth 1 https://github.com/1519511/Codexzxm.git
 ```
 
 Then enter the checkout and read `README.md`, `README.zh-CN.md`, and the platform-specific instructions before installation.
@@ -155,7 +155,7 @@ Do not start by granting an entire system drive merely to make a test pass.
 Installation is complete only when:
 
 1. The tagged public source cloned successfully.
-2. The installed package reports `0.8.2-preview.0`.
+2. The installed package reports `0.8.3-preview.0`.
 3. Doctor passes.
 4. The user has a distinct tunnel and runtime credential for this machine.
 5. `tunnel-client runtimes status codexzxm --json` reports running/ready.

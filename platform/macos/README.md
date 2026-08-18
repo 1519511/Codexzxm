@@ -1,6 +1,6 @@
 # Codexzxm on Apple Silicon macOS
 
-Codexzxm 0.8.2-preview.0 uses the same Stable contract on Apple Silicon macOS: **121 registered tools** by default (`codexzxm-stable-v1`). The experimental Pro Bridge is disabled by default; explicitly enabling `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` restores 3 tools for 124 registered tools. The Mac is a separate execution host and must use its own Secure MCP Tunnel alias/name.
+Codexzxm 0.8.3-preview.0 uses the same Stable contract on Apple Silicon macOS: **121 registered tools** by default (`codexzxm-stable-v1`). The experimental Pro Bridge is disabled by default; explicitly enabling `CODEXZXM_EXPERIMENTAL_PRO_BRIDGE=1` restores 3 tools for 124 registered tools. The Mac is a separate execution host and must use its own Secure MCP Tunnel alias/name.
 
 ## Install
 
